@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Spaceship Game</title>
+	<link rel="shortcut icon" href="./favicon.ico">
+	<link rel="stylesheet" href="style.css">
+	<link href="https://fonts.googleapis.com/css?family=Audiowide&display=swap" rel="stylesheet">
+	<script src=/socket.io/socket.io.js></script>
+	<script src="helpers.js"></script>
+</head>
+<body>
+	<login>
+		<h1>Spaceship Game</h1>
+		<input id=name placeholder="Enter your username">
+		<br>
+		<button id=start>Begin your quest</button>
+	</login>
+	<lobby>
+		<left>
+			<h2>Players</h2><hr>
+			<div id=players></div>
+		</left>
+		<main>
+			<h2>Game</h2><hr>
+			<button id=launch>Launch Game</button><br><br>
+		</main>
+	</lobby>
+	<game>
+		<canvas id=gamecanvas></canvas>
+	</game>
+	<script src="main.js"></script>
+	<script src="game.js"></script>
+</body>
+</html>
