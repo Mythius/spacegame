@@ -113,15 +113,32 @@ let last_point;
 
 const center = new Vector(canvas.width/2,canvas.height/2);
 
-let corners = true;
+// 0 = grid corners, 1 = edge midpoints, 2 = cell centers
+let snapMode = 0;
+const SNAP_NAMES = ['Grid corners', 'Edge midpoints', 'Cell centers'];
 
 function adjustMouse(){
-	if(!corners){
-		MOUSE.pos.x = Math.floor(MOUSE.pos.x / tw ) * tw + tw/2;
-		MOUSE.pos.y = Math.floor(MOUSE.pos.y / th ) * th + th/2;
-	} else {
+	if(snapMode === 0){
 		MOUSE.pos.x = Math.round(MOUSE.pos.x / tw) * tw;
 		MOUSE.pos.y = Math.round(MOUSE.pos.y / th) * th;
+	} else if(snapMode === 1){
+		// nearest edge midpoint — either (corner_x, half_y) or (half_x, corner_y)
+		let cornerX  = Math.round(MOUSE.pos.x / tw) * tw;
+		let cornerY  = Math.round(MOUSE.pos.y / th) * th;
+		let halfX    = Math.floor(MOUSE.pos.x / tw) * tw + tw/2;
+		let halfY    = Math.floor(MOUSE.pos.y / th) * th + th/2;
+		let dHoriz   = Math.hypot(MOUSE.pos.x - cornerX, MOUSE.pos.y - halfY);
+		let dVert    = Math.hypot(MOUSE.pos.x - halfX,   MOUSE.pos.y - cornerY);
+		if(dHoriz <= dVert){
+			MOUSE.pos.x = cornerX;
+			MOUSE.pos.y = halfY;
+		} else {
+			MOUSE.pos.x = halfX;
+			MOUSE.pos.y = cornerY;
+		}
+	} else {
+		MOUSE.pos.x = Math.floor(MOUSE.pos.x / tw) * tw + tw/2;
+		MOUSE.pos.y = Math.floor(MOUSE.pos.y / th) * th + th/2;
 	}
 }
 
@@ -187,7 +204,8 @@ document.on('keydown',e=>{
 		current_shape.breakPath();
 		last_point = null;
 	} else if(e.key == 'c'){
-		corners = !corners;
+		snapMode = (snapMode + 1) % 3;
+		obj('#snap-label').textContent = SNAP_NAMES[snapMode];
 	} else if(e.key == 's'){
 		save();
 	} else if(e.key == 'f'){
