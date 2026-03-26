@@ -286,7 +286,7 @@ function pointToPolar(point){
 	return {a, d};
 }
 
-function save(){
+function buildSaveData(){
 	let file_data = [];
 	for(let shape of shapes){
 		let shape_segs = [];
@@ -301,7 +301,11 @@ function save(){
 		}
 		if(shape_segs.length > 0) file_data.push(shape_segs);
 	}
-	download('untitled.json',JSON.stringify(file_data));
+	return file_data;
+}
+
+function save(){
+	download('untitled.json', JSON.stringify(buildSaveData()));
 }
 
 // ── Import ────────────────────────────────────────────────────────────────────

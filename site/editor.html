@@ -150,6 +150,138 @@
 			color: white;
 			font-family: monospace;
 		}
+		#server-files-btn {
+			width: 100%;
+			margin-top: 6px;
+			padding: 7px 0;
+			background: #0a1a2a;
+			border: 1px solid #3a6a9a;
+			color: #7af;
+			font-family: monospace;
+			font-size: 12px;
+			cursor: pointer;
+			letter-spacing: 1px;
+		}
+		#server-files-btn:hover { background: #142a3a; }
+		#server-overlay {
+			display: none;
+			position: fixed;
+			top: 50%; left: 50%;
+			transform: translate(-50%,-50%);
+			background: #111;
+			border: 1px solid #444;
+			padding: 20px;
+			width: 360px;
+			max-height: 70vh;
+			z-index: 100;
+			box-sizing: border-box;
+			display: none;
+			flex-direction: column;
+			gap: 10px;
+		}
+		#server-overlay h4 {
+			margin: 0;
+			color: #7af;
+			font-size: 13px;
+			display: flex;
+			justify-content: space-between;
+		}
+		#server-overlay h4 span { cursor: pointer; color: #888; }
+		#server-overlay h4 span:hover { color: white; }
+		#server-save-row {
+			display: flex;
+			gap: 6px;
+		}
+		#server-save-name {
+			flex: 1;
+			background: #1a1a1a;
+			border: 1px solid #444;
+			color: white;
+			font-family: monospace;
+			font-size: 12px;
+			padding: 5px 8px;
+		}
+		#server-save-btn {
+			background: #0a2a0a;
+			border: 1px solid #3a7a3a;
+			color: #6f6;
+			font-family: monospace;
+			font-size: 12px;
+			cursor: pointer;
+			padding: 5px 10px;
+		}
+		#server-save-btn:hover { background: #143a14; }
+		#server-file-list {
+			overflow-y: auto;
+			max-height: calc(70vh - 120px);
+			border-top: 1px solid #333;
+			padding-top: 8px;
+		}
+		.server-file-row {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			padding: 5px 4px;
+			border-bottom: 1px solid #1e1e1e;
+			font-size: 12px;
+		}
+		.server-file-row:hover { background: #1a1a2a; }
+		.server-file-load {
+			background: none;
+			border: none;
+			color: #7af;
+			cursor: pointer;
+			font-family: monospace;
+			font-size: 12px;
+			text-align: left;
+			flex: 1;
+			padding: 0;
+		}
+		.server-file-load:hover { color: white; }
+		#sync-btn {
+			width: 100%;
+			margin-top: 6px;
+			padding: 7px 0;
+			background: #0a2a0a;
+			border: 1px solid #3a7a3a;
+			color: #6f6;
+			font-family: monospace;
+			font-size: 12px;
+			cursor: pointer;
+			letter-spacing: 1px;
+		}
+		#sync-btn:hover { background: #143a14; }
+		#sync-btn:disabled { opacity: 0.5; cursor: default; }
+		#sync-overlay {
+			display: none;
+			position: fixed;
+			top: 50%; left: 50%;
+			transform: translate(-50%,-50%);
+			background: #111;
+			border: 1px solid #444;
+			padding: 20px;
+			width: 560px;
+			max-height: 70vh;
+			z-index: 100;
+			box-sizing: border-box;
+		}
+		#sync-overlay h4 {
+			margin: 0 0 10px 0;
+			color: #6f6;
+			font-size: 13px;
+			display: flex;
+			justify-content: space-between;
+		}
+		#sync-overlay h4 span { cursor: pointer; color: #888; }
+		#sync-overlay h4 span:hover { color: white; }
+		#sync-log {
+			white-space: pre-wrap;
+			font-size: 11px;
+			color: #aaa;
+			overflow-y: auto;
+			max-height: calc(70vh - 60px);
+			font-family: monospace;
+		}
 	</style>
 	<script src="helpers.js"></script>
 </head>
@@ -193,6 +325,8 @@
 			<tr><td>S</td><td>Export JSON</td></tr>
 			<tr><td>I</td><td>Import JSON</td></tr>
 		</table>
+		<button id="server-files-btn">⊞ Server Files</button>
+		<button id="sync-btn">⇅ Sync Assets</button>
 		<div class="section">JSON format</div>
 		<table>
 			<tr><td>color</td><td>Segment stroke color</td></tr>
@@ -200,8 +334,114 @@
 			<tr><td>d</td><td>Distance in grid units</td></tr>
 		</table>
 	</div>
+	<div id="server-overlay">
+		<h4>Server Files <span onclick="closeServerOverlay()">✕</span></h4>
+		<div id="server-save-row">
+			<input id="server-save-name" type="text" placeholder="filename.json">
+			<button id="server-save-btn" onclick="saveToServer()">Save</button>
+		</div>
+		<div id="server-file-list"></div>
+	</div>
+	<div id="sync-overlay">
+		<h4>Sync Assets <span onclick="closeSyncOverlay()">✕</span></h4>
+		<div id="sync-log"></div>
+	</div>
+
 	<p>Data</p>
 	<script src=editor.js></script>
 	<script src=mouse.js></script>
+	<script>
+		const syncBtn = document.getElementById('sync-btn');
+		const syncOverlay = document.getElementById('sync-overlay');
+		const syncLog = document.getElementById('sync-log');
+
+		syncBtn.addEventListener('click', async () => {
+			syncBtn.disabled = true;
+			syncBtn.textContent = '⇅ Syncing...';
+			syncLog.textContent = 'Connecting…';
+			syncOverlay.style.display = 'block';
+			try {
+				const res = await fetch('/sync', { method: 'POST' });
+				const data = await res.json();
+				syncLog.textContent = data.log || '(no output)';
+				syncLog.textContent += data.ok ? '\n✓ Sync complete.' : '\n✗ Sync finished with errors.';
+			} catch(e) {
+				syncLog.textContent = 'Error: ' + e.message + '\n\nMake sure the node server is running.';
+			}
+			syncBtn.disabled = false;
+			syncBtn.textContent = '⇅ Sync Assets';
+		});
+
+		function closeSyncOverlay() {
+			syncOverlay.style.display = 'none';
+		}
+
+		// ── Server Files ──────────────────────────────────────────────────────
+		const serverOverlay = document.getElementById('server-overlay');
+		const serverFileList = document.getElementById('server-file-list');
+
+		document.getElementById('server-files-btn').addEventListener('click', openServerOverlay);
+
+		async function openServerOverlay() {
+			serverOverlay.style.display = 'flex';
+			serverFileList.textContent = 'Loading…';
+			try {
+				const res = await fetch('/asset-list');
+				const { files, error } = await res.json();
+				if (error) { serverFileList.textContent = 'Error: ' + error; return; }
+				serverFileList.innerHTML = '';
+				if (files.length === 0) { serverFileList.textContent = 'No files found.'; return; }
+				for (const f of files) {
+					const row = document.createElement('div');
+					row.className = 'server-file-row';
+					const btn = document.createElement('button');
+					btn.className = 'server-file-load';
+					btn.textContent = f;
+					btn.onclick = () => loadFromServer(f);
+					row.appendChild(btn);
+					serverFileList.appendChild(row);
+				}
+			} catch(e) {
+				serverFileList.textContent = 'Error: ' + e.message + '\n\nIs the node server running?';
+			}
+		}
+
+		function closeServerOverlay() {
+			serverOverlay.style.display = 'none';
+		}
+
+		async function loadFromServer(filename) {
+			try {
+				const res = await fetch('/assets/' + filename);
+				const data = await res.json();
+				loadJSON(JSON.stringify(data));
+				closeServerOverlay();
+			} catch(e) {
+				alert('Failed to load: ' + e.message);
+			}
+		}
+
+		async function saveToServer() {
+			const name = document.getElementById('server-save-name').value.trim();
+			if (!name) { alert('Enter a filename'); return; }
+			try {
+				const data = buildSaveData();
+				const res = await fetch('/asset-save', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ name, data })
+				});
+				const result = await res.json();
+				if (result.ok) {
+					document.getElementById('server-save-name').value = '';
+					openServerOverlay(); // refresh list
+				} else {
+					alert('Save failed: ' + result.error);
+				}
+			} catch(e) {
+				alert('Error: ' + e.message);
+			}
+		}
+	</script>
 </body>
 </html>

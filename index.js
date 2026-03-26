@@ -5,6 +5,8 @@ const io = require('socket.io')(http);
 const fs = require('fs');
 const system = require('child_process');
 
+app.use(express.json());
+
 
 const file = {
 	save: function(name,text){
@@ -24,6 +26,106 @@ const port = 80;
 const path = __dirname+'/';
 
 app.use(express.static(path+'site/'));
+app.use('/assets', express.static(path+'assets/'));
+
+// ── Asset sync ────────────────────────────────────────────────────────────────
+const SftpClient = require('ssh2-sftp-client');
+const REMOTE_HOST = 'msouthwick.com';
+const REMOTE_USER = 'matthias';
+const REMOTE_DIR  = '/srv/ftp/pub';
+const ASSETS = path + 'assets/';
+
+// list JSON files in assets/
+app.get('/asset-list', (req, res) => {
+	try {
+		const files = fs.readdirSync(ASSETS).filter(f => f.endsWith('.json'));
+		res.json({ files });
+	} catch(e) {
+		res.json({ files: [], error: e.message });
+	}
+});
+
+// save JSON to assets/
+app.post('/asset-save', (req, res) => {
+	const { name, data } = req.body;
+	if (!name || !data) return res.json({ ok: false, error: 'missing name or data' });
+	const safe = require('path').basename(name).replace(/[^a-zA-Z0-9._-]/g, '_');
+	const filename = safe.endsWith('.json') ? safe : safe + '.json';
+	try {
+		fs.writeFileSync(ASSETS + filename, JSON.stringify(data));
+		res.json({ ok: true, filename });
+	} catch(e) {
+		res.json({ ok: false, error: e.message });
+	}
+});
+
+app.post('/sync', async (req, res) => {
+	const sftp = new SftpClient();
+	const lines = [];
+	const log = (msg) => { lines.push(msg); console.log(msg); };
+
+	try {
+		const os = require('os');
+		const nodePath = require('path');
+		const keyPath = process.env.SSH_KEY || nodePath.join(os.homedir(), '.ssh', 'id_ed25519');
+		const connectOpts = { host: REMOTE_HOST, username: REMOTE_USER };
+		if (fs.existsSync(keyPath)) connectOpts.privateKey = fs.readFileSync(keyPath);
+		else if (process.env.SSH_AUTH_SOCK) connectOpts.agent = process.env.SSH_AUTH_SOCK;
+		await sftp.connect(connectOpts);
+		log(`Connected to ${REMOTE_HOST}`);
+
+		// local files: name → mtime in ms
+		const localFiles = {};
+		for (const f of fs.readdirSync(ASSETS)) {
+			const stat = fs.statSync(ASSETS + f);
+			if (stat.isFile()) localFiles[f] = stat.mtimeMs;
+		}
+
+		// remote files: name → mtime in ms
+		const remoteFiles = {};
+		for (const item of await sftp.list(REMOTE_DIR)) {
+			if (item.type === '-') remoteFiles[item.name] = item.modifyTime; // already ms
+		}
+
+		const allNames = new Set([...Object.keys(localFiles), ...Object.keys(remoteFiles)]);
+		let pushed = 0, pulled = 0, skipped = 0;
+
+		for (const name of allNames) {
+			const local  = localFiles[name];
+			const remote = remoteFiles[name];
+			const remotePath = `${REMOTE_DIR}/${name}`;
+			const localPath  = ASSETS + name;
+
+			if (local !== undefined && remote === undefined) {
+				await sftp.put(localPath, remotePath);
+				log(`↑ pushed  ${name}`);
+				pushed++;
+			} else if (remote !== undefined && local === undefined) {
+				await sftp.get(remotePath, localPath);
+				log(`↓ pulled  ${name}`);
+				pulled++;
+			} else if (local > remote + 1000) {
+				await sftp.put(localPath, remotePath);
+				log(`↑ pushed  ${name}  (local newer)`);
+				pushed++;
+			} else if (remote > local + 1000) {
+				await sftp.get(remotePath, localPath);
+				log(`↓ pulled  ${name}  (remote newer)`);
+				pulled++;
+			} else {
+				skipped++;
+			}
+		}
+
+		log(`\nDone — ↑${pushed} pushed  ↓${pulled} pulled  =${skipped} up-to-date`);
+		await sftp.end();
+		res.json({ ok: true, log: lines.join('\n') });
+	} catch (e) {
+		lines.push(`Error: ${e.message}`);
+		try { await sftp.end(); } catch(_){}
+		res.json({ ok: false, log: lines.join('\n') });
+	}
+});
 
 app.get(/.*/,function(request,response){
 	response.sendFile(path+'site/');
