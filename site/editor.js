@@ -154,7 +154,9 @@ function loop(){
 	drawPoint(MOUSE.pos,5,'blue');
 	drawPoint(center,10,'white');
 	let dir = Line.getDir(center.x-MOUSE.pos.x,center.y-MOUSE.pos.y);
-	obj('p').innerHTML = dir;
+	let gx = Math.round((MOUSE.pos.x - center.x) / tw * 10) / 10;
+	let gy = Math.round((center.y - MOUSE.pos.y) / th * 10) / 10;
+	obj('p').innerHTML = `angle: ${Math.round(dir*10)/10}°  &nbsp; x: ${gx}  y: ${gy}`;
 }
 
 function drawPoint(vector,radius,color){
