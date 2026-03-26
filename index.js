@@ -59,6 +59,33 @@ app.post('/asset-save', (req, res) => {
 	}
 });
 
+// ── Beam assets ───────────────────────────────────────────────────────────────
+const BEAMS = path + 'assets/beams/';
+if (!fs.existsSync(BEAMS)) fs.mkdirSync(BEAMS, { recursive: true });
+app.use('/beams', express.static(BEAMS));
+
+app.get('/beam-list', (req, res) => {
+	try {
+		const files = fs.readdirSync(BEAMS).filter(f => f.endsWith('.json'));
+		res.json({ files });
+	} catch(e) {
+		res.json({ files: [], error: e.message });
+	}
+});
+
+app.post('/beam-save', (req, res) => {
+	const { name, data } = req.body;
+	if (!name || !data) return res.json({ ok: false, error: 'missing name or data' });
+	const safe = require('path').basename(name).replace(/[^a-zA-Z0-9._-]/g, '_');
+	const filename = safe.endsWith('.json') ? safe : safe + '.json';
+	try {
+		fs.writeFileSync(BEAMS + filename, JSON.stringify(data));
+		res.json({ ok: true, filename });
+	} catch(e) {
+		res.json({ ok: false, error: e.message });
+	}
+});
+
 app.post('/sync', async (req, res) => {
 	const sftp = new SftpClient();
 	const lines = [];

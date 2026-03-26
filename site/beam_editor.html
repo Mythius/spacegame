@@ -1,0 +1,391 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Beam Editor</title>
+	<style>
+		body {
+			margin: 0;
+			background-color: black;
+			color: white;
+			font-family: monospace;
+			display: flex;
+			justify-content: center;
+			align-items: flex-start;
+			min-height: 100vh;
+			gap: 20px;
+			padding: 20px;
+			box-sizing: border-box;
+		}
+		canvas {
+			background: #030312;
+			flex-shrink: 0;
+			display: block;
+		}
+
+		/* ── Panels ── */
+		#layers-panel, #props-panel {
+			width: 210px;
+			flex-shrink: 0;
+			padding: 14px;
+			border: 1px solid #444;
+			box-sizing: border-box;
+			max-height: calc(100vh - 40px);
+			overflow-y: auto;
+		}
+		#layers-panel::-webkit-scrollbar,
+		#props-panel::-webkit-scrollbar { width: 4px; }
+		#layers-panel::-webkit-scrollbar-thumb,
+		#props-panel::-webkit-scrollbar-thumb { background: #444; }
+
+		h3 {
+			margin: 0 0 10px 0;
+			font-size: 13px;
+			text-transform: uppercase;
+			letter-spacing: 1px;
+			color: #aaa;
+			border-bottom: 1px solid #333;
+			padding-bottom: 8px;
+		}
+		.section {
+			margin-top: 14px;
+			margin-bottom: 5px;
+			font-size: 11px;
+			color: #555;
+			text-transform: uppercase;
+			letter-spacing: 1px;
+		}
+
+		/* ── Add-layer row ── */
+		#layer-add-row {
+			display: flex;
+			gap: 6px;
+			margin-bottom: 10px;
+		}
+		#new-layer-type {
+			flex: 1;
+			background: #111;
+			border: 1px solid #444;
+			color: #ccc;
+			font-family: monospace;
+			font-size: 12px;
+			padding: 4px 6px;
+		}
+		#add-layer-btn {
+			background: #0a1a0a;
+			border: 1px solid #3a5a3a;
+			color: #6d6;
+			font-family: monospace;
+			font-size: 12px;
+			cursor: pointer;
+			padding: 4px 10px;
+		}
+		#add-layer-btn:hover { background: #122a12; }
+
+		/* ── Layer rows ── */
+		#layers-list { overflow-y: visible; }
+		.layer-row {
+			display: flex;
+			align-items: center;
+			gap: 5px;
+			padding: 5px 3px;
+			border-bottom: 1px solid #1e1e1e;
+			border-left: 2px solid transparent;
+			cursor: pointer;
+		}
+		.layer-row:hover { background: #0e0e0e; }
+		.layer-row.selected { background: #0a1828; border-left-color: #3a6a9a; }
+		.layer-move-btns { display: flex; flex-direction: column; gap: 1px; }
+		.layer-move-btns button {
+			background: none; border: none; color: #555; cursor: pointer;
+			font-size: 9px; padding: 1px 2px; line-height: 1;
+		}
+		.layer-move-btns button:hover { color: white; }
+		.layer-num { font-size: 11px; color: #555; min-width: 20px; }
+		.layer-badge {
+			font-size: 10px; padding: 1px 5px; letter-spacing: 0.5px;
+			font-weight: bold; flex-shrink: 0;
+		}
+		.layer-badge.line   { background: #0a1a3a; border: 1px solid #3a5a9a; color: #7af; }
+		.layer-badge.sin    { background: #0a2a1a; border: 1px solid #3a7a4a; color: #5f8; }
+		.layer-badge.zigzag { background: #2a1a0a; border: 1px solid #7a5a2a; color: #fa6; }
+		.layer-color-inp {
+			width: 26px; height: 22px; padding: 1px;
+			border: 1px solid #555; background: none; cursor: pointer;
+		}
+		.layer-del {
+			background: none; border: 1px solid #633; color: #f66;
+			font-size: 11px; cursor: pointer; padding: 1px 5px; margin-left: auto;
+		}
+		.layer-del:hover { background: #400; }
+
+		/* ── Canvas area ── */
+		#canvas-area { flex-shrink: 0; }
+		#canvas-footer {
+			display: flex;
+			align-items: center;
+			gap: 12px;
+			margin-top: 8px;
+		}
+		#play-btn {
+			background: #0a2a0a; border: 1px solid #3a7a3a; color: #6f6;
+			font-family: monospace; font-size: 12px; cursor: pointer;
+			padding: 5px 16px; letter-spacing: 1px;
+		}
+		#play-btn.playing { background: #2a0a0a; border-color: #7a3a3a; color: #f66; }
+		#play-btn:hover:not(.playing) { background: #142a14; }
+		#canvas-info { font-size: 12px; color: #555; }
+
+		/* ── Props panel ── */
+		.prop-row { margin-bottom: 9px; }
+		.prop-row label {
+			display: block; font-size: 11px; color: #666;
+			text-transform: uppercase; letter-spacing: 1px; margin-bottom: 4px;
+		}
+		.prop-row select,
+		.prop-row input[type=text],
+		.prop-row input[type=number]:not(.num-in) {
+			width: 100%; background: #1a1a1a; border: 1px solid #444; color: white;
+			font-family: monospace; font-size: 12px; padding: 4px 7px;
+			box-sizing: border-box;
+		}
+		.slider-row { display: flex; gap: 6px; align-items: center; }
+		.slider-row input[type=range] { flex: 1; accent-color: #7af; }
+		.num-in {
+			width: 54px; background: #1a1a1a; border: 1px solid #444; color: white;
+			font-family: monospace; font-size: 12px; padding: 3px 5px; flex-shrink: 0;
+		}
+		.no-layer { font-size: 12px; color: #555; padding: 6px 0; }
+
+		/* ── Mode toggle ── */
+		.mode-toggle { display: flex; }
+		.mode-btn {
+			background: #111; border: 1px solid #333; color: #666;
+			font-family: monospace; font-size: 11px; cursor: pointer;
+			padding: 4px 10px; flex: 1;
+		}
+		.mode-btn.active { background: #0a1a2a; border-color: #3a6a9a; color: #7af; }
+		.mode-btn:hover:not(.active) { background: #1a1a1a; }
+		#draw-speed-row { display: none; }
+
+		/* ── File buttons ── */
+		.file-btn {
+			width: 100%; margin-top: 6px; padding: 7px 0;
+			font-family: monospace; font-size: 12px; cursor: pointer; letter-spacing: 1px;
+		}
+		#server-files-btn { background: #0a1a2a; border: 1px solid #3a6a9a; color: #7af; }
+		#server-files-btn:hover { background: #142a3a; }
+		#sync-btn { background: #0a2a0a; border: 1px solid #3a7a3a; color: #6f6; }
+		#sync-btn:hover { background: #143a14; }
+		#sync-btn:disabled { opacity: 0.5; cursor: default; }
+
+		.controls-table { width: 100%; border-collapse: collapse; font-size: 12px; }
+		.controls-table tr { border-bottom: 1px solid #222; }
+		.controls-table td { padding: 5px 4px; vertical-align: top; }
+		.controls-table td:first-child { color: #7af; padding-right: 10px; white-space: nowrap; }
+		.controls-table td:last-child { color: #ccc; }
+
+		/* ── Server overlay ── */
+		#server-overlay {
+			display: none; position: fixed; top: 50%; left: 50%;
+			transform: translate(-50%,-50%); background: #111;
+			border: 1px solid #444; padding: 20px; width: 360px;
+			max-height: 70vh; z-index: 100; box-sizing: border-box;
+			flex-direction: column; gap: 10px;
+		}
+		#server-overlay h4 { margin: 0; color: #7af; font-size: 13px; display: flex; justify-content: space-between; }
+		#server-overlay h4 span { cursor: pointer; color: #888; }
+		#server-overlay h4 span:hover { color: white; }
+		#server-save-row { display: flex; gap: 6px; }
+		#server-save-name {
+			flex: 1; background: #1a1a1a; border: 1px solid #444; color: white;
+			font-family: monospace; font-size: 12px; padding: 5px 8px;
+		}
+		#server-save-btn {
+			background: #0a2a0a; border: 1px solid #3a7a3a; color: #6f6;
+			font-family: monospace; font-size: 12px; cursor: pointer; padding: 5px 10px;
+		}
+		#server-save-btn:hover { background: #143a14; }
+		#server-file-list {
+			overflow-y: auto; max-height: calc(70vh - 120px);
+			border-top: 1px solid #333; padding-top: 8px;
+		}
+		.server-file-row {
+			display: flex; align-items: center; padding: 5px 4px;
+			border-bottom: 1px solid #1e1e1e; font-size: 12px;
+		}
+		.server-file-row:hover { background: #1a1a2a; }
+		.server-file-load {
+			background: none; border: none; color: #7af; cursor: pointer;
+			font-family: monospace; font-size: 12px; text-align: left; flex: 1; padding: 0;
+		}
+		.server-file-load:hover { color: white; }
+
+		/* ── Sync overlay ── */
+		#sync-overlay {
+			display: none; position: fixed; top: 50%; left: 50%;
+			transform: translate(-50%,-50%); background: #111;
+			border: 1px solid #444; padding: 20px; width: 560px;
+			max-height: 70vh; z-index: 100; box-sizing: border-box;
+		}
+		#sync-overlay h4 { margin: 0 0 10px 0; color: #6f6; font-size: 13px; display: flex; justify-content: space-between; }
+		#sync-overlay h4 span { cursor: pointer; color: #888; }
+		#sync-overlay h4 span:hover { color: white; }
+		#sync-log { white-space: pre-wrap; font-size: 11px; color: #aaa; overflow-y: auto; max-height: calc(70vh - 60px); font-family: monospace; }
+
+		p#status {
+			position: fixed; left: 50%; transform: translateX(-50%);
+			bottom: 10px; color: #555; font-family: monospace; font-size: 12px; margin: 0;
+		}
+	</style>
+	<script src="helpers.js"></script>
+</head>
+<body>
+
+	<div id="layers-panel">
+		<h3>Layers</h3>
+		<div id="layer-add-row">
+			<select id="new-layer-type">
+				<option value="line">Line</option>
+				<option value="sin">Sin</option>
+				<option value="zigzag">Zigzag</option>
+			</select>
+			<button id="add-layer-btn">+ Add</button>
+		</div>
+		<div id="layers-list"></div>
+	</div>
+
+	<div id="canvas-area">
+		<canvas></canvas>
+		<div id="canvas-footer">
+			<button id="play-btn">▶ Play</button>
+			<span id="canvas-info">immediate — full beam shown</span>
+		</div>
+	</div>
+
+	<div id="props-panel">
+		<h3>Beam</h3>
+		<div class="prop-row">
+			<label>Name</label>
+			<input id="beam-name" type="text" value="new_beam">
+		</div>
+		<div class="prop-row">
+			<label>Draw Mode</label>
+			<div class="mode-toggle">
+				<button id="mode-imm" class="mode-btn active">Immediate</button>
+				<button id="mode-cont" class="mode-btn">Continuous</button>
+			</div>
+		</div>
+		<div id="draw-speed-row" class="prop-row">
+			<label>Speed (px/s)</label>
+			<input type="number" id="draw-speed" value="600" min="50" max="5000" step="50">
+		</div>
+
+		<div class="section">Selected Layer</div>
+		<div id="layer-props"><div class="no-layer">Select a layer to edit</div></div>
+
+		<div class="section">File</div>
+		<table class="controls-table">
+			<tr><td>S</td><td>Export JSON</td></tr>
+			<tr><td>I</td><td>Import JSON</td></tr>
+		</table>
+		<button id="server-files-btn" class="file-btn">⊞ Server Files</button>
+		<button id="sync-btn" class="file-btn">⇅ Sync Assets</button>
+	</div>
+
+	<div id="server-overlay">
+		<h4>Beam Files <span onclick="closeServerOverlay()">✕</span></h4>
+		<div id="server-save-row">
+			<input id="server-save-name" type="text" placeholder="filename.json">
+			<button id="server-save-btn" onclick="saveToServer()">Save</button>
+		</div>
+		<div id="server-file-list"></div>
+	</div>
+
+	<div id="sync-overlay">
+		<h4>Sync Assets <span onclick="closeSyncOverlay()">✕</span></h4>
+		<div id="sync-log"></div>
+	</div>
+
+	<p id="status">Beam Editor</p>
+
+	<script src="beam_editor.js"></script>
+	<script>
+		// ── Server Files ─────────────────────────────────────────────
+		const serverOverlay  = obj('#server-overlay');
+		const serverFileList = obj('#server-file-list');
+		obj('#server-files-btn').onclick = openServerOverlay;
+
+		async function openServerOverlay() {
+			serverOverlay.style.display = 'flex';
+			serverFileList.textContent = 'Loading…';
+			try {
+				const res = await fetch('/beam-list');
+				const { files, error } = await res.json();
+				if (error) { serverFileList.textContent = 'Error: ' + error; return; }
+				serverFileList.innerHTML = '';
+				if (!files.length) { serverFileList.textContent = 'No beam files found.'; return; }
+				for (const f of files) {
+					const row = document.createElement('div');
+					row.className = 'server-file-row';
+					const btn = document.createElement('button');
+					btn.className = 'server-file-load';
+					btn.textContent = f;
+					btn.onclick = () => loadFromServer(f);
+					row.appendChild(btn);
+					serverFileList.appendChild(row);
+				}
+			} catch(e) {
+				serverFileList.textContent = 'Error: ' + e.message + '\n\nIs the node server running?';
+			}
+		}
+		function closeServerOverlay() { serverOverlay.style.display = 'none'; }
+
+		async function loadFromServer(filename) {
+			try {
+				const res  = await fetch('/beams/' + filename);
+				const data = await res.json();
+				loadBeam(data);
+				closeServerOverlay();
+			} catch(e) { alert('Failed to load: ' + e.message); }
+		}
+
+		async function saveToServer() {
+			const name = obj('#server-save-name').value.trim();
+			if (!name) { alert('Enter a filename'); return; }
+			try {
+				const res = await fetch('/beam-save', {
+					method: 'POST',
+					headers: { 'Content-Type': 'application/json' },
+					body: JSON.stringify({ name, data: buildSaveData() })
+				});
+				const result = await res.json();
+				if (result.ok) { obj('#server-save-name').value = ''; openServerOverlay(); }
+				else alert('Save failed: ' + result.error);
+			} catch(e) { alert('Error: ' + e.message); }
+		}
+
+		// ── Sync ─────────────────────────────────────────────────────
+		const syncBtn     = obj('#sync-btn');
+		const syncOverlay = obj('#sync-overlay');
+		const syncLog     = obj('#sync-log');
+
+		syncBtn.onclick = async () => {
+			syncBtn.disabled = true;
+			syncBtn.textContent = '⇅ Syncing...';
+			syncLog.textContent = 'Connecting…';
+			syncOverlay.style.display = 'block';
+			try {
+				const res  = await fetch('/sync', { method: 'POST' });
+				const data = await res.json();
+				syncLog.textContent  = data.log || '(no output)';
+				syncLog.textContent += data.ok ? '\n✓ Sync complete.' : '\n✗ Sync finished with errors.';
+			} catch(e) {
+				syncLog.textContent = 'Error: ' + e.message + '\n\nMake sure the node server is running.';
+			}
+			syncBtn.disabled = false;
+			syncBtn.textContent = '⇅ Sync Assets';
+		};
+		function closeSyncOverlay() { syncOverlay.style.display = 'none'; }
+	</script>
+</body>
+</html>
