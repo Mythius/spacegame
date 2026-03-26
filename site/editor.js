@@ -156,10 +156,14 @@ function save(){
 	let file_data = [];
 	for(let shape of shapes){
 		let shape_arr = [];
-		for(let point of shape.points){
-			let dir = Line.getDir(center.x-point.x,center.y-point.y);
-			let dist = Line.distance(center.x,center.y,point.x,point.y);
-			shape_arr.push({a:dir,d:dist});
+		let pts = shape.points;
+		// skip duplicate closing point if shape was closed (last point === first point)
+		let len = (pts.length > 1 && pts[pts.length-1] === pts[0]) ? pts.length - 1 : pts.length;
+		for(let i = 0; i < len; i++){
+			let point = pts[i];
+			let a = Math.round(Line.getDir(center.x-point.x, center.y-point.y) * 10) / 10;
+			let d = Math.round(Line.distance(center.x,center.y,point.x,point.y) / tw * 100) / 100;
+			shape_arr.push({a, d});
 		}
 		file_data.push(shape_arr);
 	}

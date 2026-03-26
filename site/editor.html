@@ -3,23 +3,107 @@
 <head>
 	<title>Spaceship Editor</title>
 	<style>
-		canvas{
+		body {
+			margin: 0;
 			background-color: black;
-			position: absolute;
-			left: 50%;
-			transform: translateX(-50%);
+			color: white;
+			font-family: monospace;
+			display: flex;
+			justify-content: center;
+			align-items: flex-start;
+			min-height: 100vh;
+			gap: 20px;
+			padding: 20px;
+			box-sizing: border-box;
 		}
-		p{
+		canvas {
+			background-color: black;
+			flex-shrink: 0;
+		}
+		#guide {
+			width: 200px;
+			flex-shrink: 0;
+			padding: 14px;
+			border: 1px solid #444;
+			box-sizing: border-box;
+		}
+		#guide h3 {
+			margin: 0 0 12px 0;
+			font-size: 13px;
+			text-transform: uppercase;
+			letter-spacing: 1px;
+			color: #aaa;
+			border-bottom: 1px solid #333;
+			padding-bottom: 8px;
+		}
+		#guide table {
+			width: 100%;
+			border-collapse: collapse;
+			font-size: 12px;
+		}
+		#guide tr {
+			border-bottom: 1px solid #222;
+		}
+		#guide td {
+			padding: 6px 4px;
+			vertical-align: top;
+		}
+		#guide td:first-child {
+			white-space: nowrap;
+			color: #7af;
+			padding-right: 10px;
+		}
+		#guide td:last-child {
+			color: #ccc;
+		}
+		#guide .section {
+			margin-top: 14px;
+			margin-bottom: 4px;
+			font-size: 11px;
+			color: #666;
+			text-transform: uppercase;
+			letter-spacing: 1px;
+		}
+		p {
 			position: fixed;
 			left: 50%;
 			transform: translateX(-50%);
 			bottom: 10px;
+			color: white;
+			font-family: monospace;
 		}
 	</style>
 	<script src="helpers.js"></script>
 </head>
 <body>
 	<canvas></canvas>
+	<div id="guide">
+		<h3>Controls</h3>
+		<div class="section">Drawing</div>
+		<table>
+			<tr><td>Left click</td><td>Place point</td></tr>
+			<tr><td>Right click</td><td>Close &amp; save shape (outline)</td></tr>
+			<tr><td>Space</td><td>Close shape loop (filled)</td></tr>
+			<tr><td>Ctrl+Z / D</td><td>Undo last point</td></tr>
+		</table>
+		<div class="section">Snap</div>
+		<table>
+			<tr><td>C</td><td>Toggle corners / centers</td></tr>
+		</table>
+		<div class="section">Shapes</div>
+		<table>
+			<tr><td>F</td><td>Delete last shape</td></tr>
+		</table>
+		<div class="section">File</div>
+		<table>
+			<tr><td>S</td><td>Export JSON</td></tr>
+		</table>
+		<div class="section">JSON format</div>
+		<table>
+			<tr><td>a</td><td>Angle from center (deg)</td></tr>
+			<tr><td>d</td><td>Distance in grid units</td></tr>
+		</table>
+	</div>
 	<p>Data</p>
 	<script src=editor.js></script>
 	<script src=mouse.js></script>
