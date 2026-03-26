@@ -200,10 +200,13 @@ document.on('contextmenu',e=>{
 document.on('keydown',e=>{
 	if(e.key == ' '){
 		current_shape.close();
-	} else if(e.key == 'd' || (e.ctrlKey && e.key == 'z')){
+	} else if(e.key == 'x' || (e.ctrlKey && e.key == 'z')){
 		current_shape.undoPoint();
 	} else if(e.key == 'v'){
-		current_shape.breakPath();
+		if(current_shape.segments.flat().length > 0){
+			shapes.push(current_shape);
+			current_shape = new Shape();
+		}
 		last_point = null;
 	} else if(e.key == 'c'){
 		snapMode = (snapMode + 1) % 3;
