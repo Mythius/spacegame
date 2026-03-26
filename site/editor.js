@@ -109,6 +109,12 @@ const center = new Vector(canvas.width/2,canvas.height/2);
 let snapMode = 0;
 const SNAP_NAMES = ['Grid corners', 'Edge midpoints', 'Cell centers'];
 
+// 0 = grid + centerpoint, 1 = clean (no grid, no center), 2 = blueprint
+let gridMode = 0;
+const GRID_MODE_NAMES = ['Grid + Center', 'Clean', 'Blueprint'];
+const BLUEPRINT_BG   = '#001f4d';
+const BLUEPRINT_GRID = 'rgba(100,160,255,0.35)';
+
 function adjustMouse(){
 	if(snapMode === 0){
 		MOUSE.pos.x = Math.round(MOUSE.pos.x / tw) * tw;
@@ -137,14 +143,22 @@ function adjustMouse(){
 function loop(){
 	adjustMouse();
 	ctx.clearRect(-2,-2,canvas.width+2,canvas.height+2);
-	drawGrid(25,25);
+
+	if(gridMode === 2){
+		ctx.fillStyle = BLUEPRINT_BG;
+		ctx.fillRect(0,0,canvas.width,canvas.height);
+		drawGrid(25,25);
+	} else if(gridMode === 0){
+		drawGrid(25,25);
+	}
+
 	for(let i=0;i<shapes.length;i++) shapes[i].draw(null, i===hoveredShapeIndex);
 	current_shape.draw(getPickerColor());
 	if(last_point){
 		drawPoint(last_point,5,'green');
 	}
 	drawPoint(MOUSE.pos,5,'blue');
-	drawPoint(center,10,'white');
+	if(gridMode !== 1) drawPoint(center,10,'white');
 	let dir = Line.getDir(center.x-MOUSE.pos.x,center.y-MOUSE.pos.y);
 	let gx = Math.round((MOUSE.pos.x - center.x) / tw * 10) / 10;
 	let gy = Math.round((center.y - MOUSE.pos.y) / th * 10) / 10;
@@ -165,7 +179,7 @@ function drawGrid(w,h){
 		for(let y=0;y<canvas.height;y+=th){
 			ctx.beginPath();
 			ctx.lineWidth = 1;
-			ctx.strokeStyle = 'white';
+			ctx.strokeStyle = gridMode === 2 ? BLUEPRINT_GRID : 'white';
 			ctx.rect(x,y,tw,th);
 			ctx.stroke();
 		}
@@ -203,6 +217,9 @@ document.on('keydown',e=>{
 			updateShapesPanel();
 		}
 		last_point = null;
+	} else if(e.key == 'g'){
+		gridMode = (gridMode + 1) % 3;
+		obj('#grid-label').textContent = GRID_MODE_NAMES[gridMode];
 	} else if(e.key == 'c'){
 		snapMode = (snapMode + 1) % 3;
 		obj('#snap-label').textContent = SNAP_NAMES[snapMode];
