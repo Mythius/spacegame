@@ -204,6 +204,7 @@ document.on('keydown',e=>{
 		current_shape.undoPoint();
 	} else if(e.key == 'v'){
 		if(current_shape.segments.flat().length > 0){
+			current_shape.filled = false;
 			shapes.push(current_shape);
 			current_shape = new Shape();
 		}
