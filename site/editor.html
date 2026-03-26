@@ -64,6 +64,19 @@
 			text-transform: uppercase;
 			letter-spacing: 1px;
 		}
+		#color-picker {
+			width: 36px;
+			height: 28px;
+			padding: 2px;
+			border: 1px solid #555;
+			background: none;
+			cursor: pointer;
+			flex-shrink: 0;
+		}
+		#color-preview-label {
+			font-size: 12px;
+			color: #ccc;
+		}
 		p {
 			position: fixed;
 			left: 50%;
@@ -79,12 +92,18 @@
 	<canvas></canvas>
 	<div id="guide">
 		<h3>Controls</h3>
+		<div class="section">Segment Color</div>
+		<div style="display:flex;align-items:center;gap:8px;padding:6px 4px;">
+			<input type="color" id="color-picker" value="#ffffff">
+			<span id="color-preview-label">Current color</span>
+		</div>
 		<div class="section">Drawing</div>
 		<table>
 			<tr><td>Left click</td><td>Place point</td></tr>
 			<tr><td>Right click</td><td>Close &amp; save shape (outline)</td></tr>
 			<tr><td>Space</td><td>Close shape loop (filled)</td></tr>
 			<tr><td>Ctrl+Z / D</td><td>Undo last point</td></tr>
+			<tr><td>N</td><td>Break — start disconnected line</td></tr>
 		</table>
 		<div class="section">Snap</div>
 		<table>
@@ -97,9 +116,11 @@
 		<div class="section">File</div>
 		<table>
 			<tr><td>S</td><td>Export JSON</td></tr>
+			<tr><td>I</td><td>Import JSON</td></tr>
 		</table>
 		<div class="section">JSON format</div>
 		<table>
+			<tr><td>color</td><td>Segment stroke color</td></tr>
 			<tr><td>a</td><td>Angle from center (deg)</td></tr>
 			<tr><td>d</td><td>Distance in grid units</td></tr>
 		</table>

@@ -37,32 +37,73 @@ class Line{
 	}
 }
 
+function getPickerColor(){
+	return obj('#color-picker').value;
+}
+
 class Shape{
 	constructor(){
-		this.points = [];
+		this.segments = [[]];
+		this.segmentColors = [getPickerColor()];
 		this.filled = true;
 	}
+	currentSegment(){
+		return this.segments[this.segments.length-1];
+	}
 	addPoint(point){
-		this.points.push(point);
+		this.currentSegment().push(point);
+	}
+	breakPath(){
+		if(this.currentSegment().length > 0){
+			this.segments.push([]);
+			this.segmentColors.push(getPickerColor());
+		}
+	}
+	undoPoint(){
+		let seg = this.currentSegment();
+		seg.pop();
+		if(seg.length === 0 && this.segments.length > 1){
+			this.segments.pop();
+			this.segmentColors.pop();
+		}
+		let cur = this.currentSegment();
+		last_point = cur.length > 0 ? cur[cur.length-1] : null;
 	}
 	close(){
-		if(this.points.length>2){
-			this.points.push(this.points[0]);
-			last_point = this.points[0];
+		let first = this.segments[0][0];
+		let allPts = this.segments.flat();
+		if(allPts.length > 2 && first){
+			this.currentSegment().push(first);
+			last_point = first;
 		}
 	}
-	draw(color='green',fill=false){
-		if(this.points.length == 0) return;
-		ctx.beginPath();
-		ctx.strokeStyle = color;
-		ctx.moveTo(this.points[0].x,this.points[0].y);
-		for(let i=1;i<this.points.length;i++){
-			ctx.lineTo(this.points[i].x,this.points[i].y);
+	// liveColor: overrides the active segment's color (used while drawing)
+	draw(fill=false, liveColor=null){
+		let allPts = this.segments.flat();
+		if(allPts.length === 0) return;
+
+		ctx.lineWidth = 6;
+		for(let i=0;i<this.segments.length;i++){
+			let seg = this.segments[i];
+			if(seg.length === 0) continue;
+			let color = (liveColor && i === this.segments.length-1) ? liveColor : this.segmentColors[i];
+			ctx.beginPath();
+			ctx.strokeStyle = color;
+			ctx.moveTo(seg[0].x,seg[0].y);
+			for(let j=1;j<seg.length;j++) ctx.lineTo(seg[j].x,seg[j].y);
+			ctx.stroke();
 		}
-		ctx.stroke();
-		ctx.fillStyle = '#444';
-		if(fill && this.filled) ctx.fill();
-		ctx.closePath();
+
+		if(fill && this.filled){
+			ctx.beginPath();
+			for(let seg of this.segments){
+				if(seg.length === 0) continue;
+				ctx.moveTo(seg[0].x,seg[0].y);
+				for(let j=1;j<seg.length;j++) ctx.lineTo(seg[j].x,seg[j].y);
+			}
+			ctx.fillStyle = '#444';
+			ctx.fill();
+		}
 	}
 }
 
@@ -76,7 +117,7 @@ let corners = true;
 
 function adjustMouse(){
 	if(!corners){
-		MOUSE.pos.x = Math.floor(MOUSE.pos.x / tw ) * tw + tw/2; 
+		MOUSE.pos.x = Math.floor(MOUSE.pos.x / tw ) * tw + tw/2;
 		MOUSE.pos.y = Math.floor(MOUSE.pos.y / th ) * th + th/2;
 	} else {
 		MOUSE.pos.x = Math.round(MOUSE.pos.x / tw) * tw;
@@ -88,9 +129,8 @@ function loop(){
 	adjustMouse();
 	ctx.clearRect(-2,-2,canvas.width+2,canvas.height+2);
 	drawGrid(25,25);
-	ctx.lineWidth = 6;
-	for(let s of shapes) s.draw('cyan',true);
-	current_shape.draw('red');
+	for(let s of shapes) s.draw(true);
+	current_shape.draw(false, getPickerColor());
 	if(last_point){
 		drawPoint(last_point,5,'green');
 	}
@@ -138,37 +178,107 @@ document.on('contextmenu',e=>{
 	}
 });
 document.on('keydown',e=>{
-	if(e.key == ' ' ){
+	if(e.key == ' '){
 		current_shape.close();
-	} else if (e.key == 'd' || (e.ctrlKey && e.key == 'z')){
-		current_shape.points.pop();
-		last_point = current_shape.points[current_shape.points.length-1];
-	} else if (e.key == 'c'){
+	} else if(e.key == 'd' || (e.ctrlKey && e.key == 'z')){
+		current_shape.undoPoint();
+	} else if(e.key == 'n'){
+		current_shape.breakPath();
+		last_point = null;
+	} else if(e.key == 'c'){
 		corners = !corners;
-	} else if (e.key == 's'){
+	} else if(e.key == 's'){
 		save();
-	} else if (e.key == 'f'){
+	} else if(e.key == 'f'){
 		shapes.pop();
+	} else if(e.key == 'i'){
+		obj('#import-input').click();
 	}
 });
+
+// ── Save ──────────────────────────────────────────────────────────────────────
+
+function pointToPolar(point){
+	let a = Math.round(Line.getDir(center.x-point.x, center.y-point.y) * 10) / 10;
+	let d = Math.round(Line.distance(center.x,center.y,point.x,point.y) / tw * 100) / 100;
+	return {a, d};
+}
 
 function save(){
 	let file_data = [];
 	for(let shape of shapes){
-		let shape_arr = [];
-		let pts = shape.points;
-		// skip duplicate closing point if shape was closed (last point === first point)
-		let len = (pts.length > 1 && pts[pts.length-1] === pts[0]) ? pts.length - 1 : pts.length;
-		for(let i = 0; i < len; i++){
-			let point = pts[i];
-			let a = Math.round(Line.getDir(center.x-point.x, center.y-point.y) * 10) / 10;
-			let d = Math.round(Line.distance(center.x,center.y,point.x,point.y) / tw * 100) / 100;
-			shape_arr.push({a, d});
+		let shape_segs = [];
+		for(let i=0;i<shape.segments.length;i++){
+			let seg = shape.segments[i];
+			if(seg.length === 0) continue;
+			let len = (seg.length > 1 && seg[seg.length-1] === seg[0]) ? seg.length-1 : seg.length;
+			shape_segs.push({
+				color: shape.segmentColors[i],
+				points: seg.slice(0,len).map(pointToPolar)
+			});
 		}
-		file_data.push(shape_arr);
+		if(shape_segs.length > 0) file_data.push(shape_segs);
 	}
 	download('untitled.json',JSON.stringify(file_data));
 }
+
+// ── Import ────────────────────────────────────────────────────────────────────
+
+function polarToCanvas(p){
+	let dist = p.d * tw;
+	let rad = p.a * Math.PI / 180;
+	let x = center.x + Math.cos(rad) * dist;
+	let y = center.y + Math.sin(rad) * dist;
+	return new Vector(x, y);
+}
+
+function loadJSON(json_str){
+	let data = JSON.parse(json_str);
+	shapes = [];
+	for(let shape_data of data){
+		let shape = new Shape();
+		shape.segments = [];
+		shape.segmentColors = [];
+		// detect format: new [{color,points}] vs old (array of point arrays or flat points)
+		let isSegmented = shape_data.length > 0 && Array.isArray(shape_data[0]);
+		let isColored   = shape_data.length > 0 && !Array.isArray(shape_data[0]) && shape_data[0].color !== undefined;
+
+		if(isColored){
+			// current format: [{color, points}, ...]
+			for(let seg_data of shape_data){
+				shape.segments.push(seg_data.points.map(polarToCanvas));
+				shape.segmentColors.push(seg_data.color);
+			}
+		} else if(isSegmented){
+			// previous format: [[{a,d},...], ...]
+			for(let seg_data of shape_data){
+				shape.segments.push(seg_data.map(polarToCanvas));
+				shape.segmentColors.push('#ffffff');
+			}
+		} else {
+			// oldest format: [{a,d},...]
+			shape.segments.push(shape_data.map(polarToCanvas));
+			shape.segmentColors.push('#ffffff');
+		}
+		shapes.push(shape);
+	}
+}
+
+// hidden file input for import
+let importInput = document.createElement('input');
+importInput.type = 'file';
+importInput.accept = '.json';
+importInput.id = 'import-input';
+importInput.style.display = 'none';
+document.body.appendChild(importInput);
+importInput.on('change', e=>{
+	let file = e.target.files[0];
+	if(!file) return;
+	let reader = new FileReader();
+	reader.onload = ev => loadJSON(ev.target.result);
+	reader.readAsText(file);
+	importInput.value = '';
+});
 
 
 setInterval(loop,1000/30);
