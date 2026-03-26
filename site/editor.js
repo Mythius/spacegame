@@ -205,6 +205,7 @@ document.on('contextmenu',e=>{
 	}
 });
 document.on('keydown',e=>{
+	if(e.target.tagName === 'INPUT' && e.target.type === 'text') return;
 	if(e.key == ' '){
 		current_shape.close();
 	} else if(e.key == 'x' || (e.ctrlKey && e.key == 'z')){
