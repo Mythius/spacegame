@@ -45,6 +45,7 @@ class Shape{
 	constructor(){
 		this.segments = [[]];
 		this.segmentColors = [getPickerColor()];
+		this.closed = false;
 	}
 	currentSegment(){
 		return this.segments[this.segments.length-1];
@@ -73,6 +74,7 @@ class Shape{
 		let allPts = this.segments.flat();
 		if(allPts.length > 2 && first){
 			this.currentSegment().push(first);
+			this.closed = true;
 			last_point = first;
 		}
 	}
@@ -93,6 +95,7 @@ class Shape{
 			ctx.lineWidth = highlight ? 9 : 6;
 			ctx.moveTo(seg[0].x,seg[0].y);
 			for(let j=1;j<seg.length;j++) ctx.lineTo(seg[j].x,seg[j].y);
+			if(this.closed && i === this.segments.length-1) ctx.closePath();
 			ctx.stroke();
 		}
 	}
@@ -300,7 +303,7 @@ function buildSaveData(){
 				points: seg.slice(0,len).map(pointToPolar)
 			});
 		}
-		if(shape_segs.length > 0) file_data.push(shape_segs);
+		if(shape_segs.length > 0) file_data.push({ closed: shape.closed, segs: shape_segs });
 	}
 	return file_data;
 }
@@ -326,18 +329,22 @@ function loadJSON(json_str){
 		let shape = new Shape();
 		shape.segments = [];
 		shape.segmentColors = [];
-		// detect format: new [{color,points}] vs old (array of point arrays or flat points)
-		let isSegmented = shape_data.length > 0 && Array.isArray(shape_data[0]);
-		let isColored   = shape_data.length > 0 && !Array.isArray(shape_data[0]) && shape_data[0].color !== undefined;
 
-		if(isColored){
-			// current format: [{color, points}, ...]
+		// newest format: { closed, segs: [{color, points}, ...] }
+		if(shape_data && shape_data.segs){
+			shape.closed = !!shape_data.closed;
+			for(let seg_data of shape_data.segs){
+				shape.segments.push(seg_data.points.map(polarToCanvas));
+				shape.segmentColors.push(seg_data.color);
+			}
+		// previous format: [{color, points}, ...]
+		} else if(Array.isArray(shape_data) && shape_data.length > 0 && shape_data[0].color !== undefined){
 			for(let seg_data of shape_data){
 				shape.segments.push(seg_data.points.map(polarToCanvas));
 				shape.segmentColors.push(seg_data.color);
 			}
-		} else if(isSegmented){
-			// previous format: [[{a,d},...], ...]
+		// older format: [[{a,d},...], ...]
+		} else if(Array.isArray(shape_data) && shape_data.length > 0 && Array.isArray(shape_data[0])){
 			for(let seg_data of shape_data){
 				shape.segments.push(seg_data.map(polarToCanvas));
 				shape.segmentColors.push('#ffffff');
@@ -347,6 +354,14 @@ function loadJSON(json_str){
 			shape.segments.push(shape_data.map(polarToCanvas));
 			shape.segmentColors.push('#ffffff');
 		}
+
+		// re-attach closing point if shape was closed
+		if(shape.closed && shape.segments[0] && shape.segments[0].length > 0){
+			let first = shape.segments[0][0];
+			let last_seg = shape.segments[shape.segments.length-1];
+			last_seg.push(first);
+		}
+
 		shapes.push(shape);
 	}
 	updateShapesPanel();
