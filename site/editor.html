@@ -20,13 +20,17 @@
 			background-color: black;
 			flex-shrink: 0;
 		}
-		#guide {
+
+		/* ── shared panel styles ── */
+		#guide, #shapes-panel {
 			width: 200px;
 			flex-shrink: 0;
 			padding: 14px;
 			border: 1px solid #444;
 			box-sizing: border-box;
 		}
+
+		/* ── guide ── */
 		#guide h3 {
 			margin: 0 0 12px 0;
 			font-size: 13px;
@@ -77,6 +81,67 @@
 			font-size: 12px;
 			color: #ccc;
 		}
+
+		/* ── shapes panel ── */
+		#shapes-panel h3 {
+			margin: 0 0 10px 0;
+			font-size: 13px;
+			text-transform: uppercase;
+			letter-spacing: 1px;
+			color: #aaa;
+			border-bottom: 1px solid #333;
+			padding-bottom: 8px;
+		}
+		#shapes-list {
+			max-height: 560px;
+			overflow-y: auto;
+		}
+		#shapes-list::-webkit-scrollbar {
+			width: 4px;
+		}
+		#shapes-list::-webkit-scrollbar-thumb {
+			background: #444;
+		}
+		.shape-row {
+			display: flex;
+			align-items: center;
+			gap: 6px;
+			padding: 5px 0;
+			border-bottom: 1px solid #222;
+		}
+		.shape-index {
+			font-size: 11px;
+			color: #666;
+			min-width: 22px;
+		}
+		.seg-colors {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 3px;
+			flex: 1;
+		}
+		.seg-color-inp {
+			width: 24px;
+			height: 22px;
+			padding: 1px;
+			border: 1px solid #555;
+			background: none;
+			cursor: pointer;
+		}
+		.shape-delete {
+			background: none;
+			border: 1px solid #633;
+			color: #f66;
+			font-size: 12px;
+			cursor: pointer;
+			padding: 2px 6px;
+			line-height: 1;
+			flex-shrink: 0;
+		}
+		.shape-delete:hover {
+			background: #400;
+		}
+
 		p {
 			position: fixed;
 			left: 50%;
@@ -89,6 +154,10 @@
 	<script src="helpers.js"></script>
 </head>
 <body>
+	<div id="shapes-panel">
+		<h3>Shapes</h3>
+		<div id="shapes-list"></div>
+	</div>
 	<canvas></canvas>
 	<div id="guide">
 		<h3>Controls</h3>

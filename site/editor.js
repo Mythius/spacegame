@@ -45,7 +45,6 @@ class Shape{
 	constructor(){
 		this.segments = [[]];
 		this.segmentColors = [getPickerColor()];
-		this.filled = true;
 	}
 	currentSegment(){
 		return this.segments[this.segments.length-1];
@@ -78,31 +77,23 @@ class Shape{
 		}
 	}
 	// liveColor: overrides the active segment's color (used while drawing)
-	draw(fill=false, liveColor=null){
+	// highlight: draws all segments in neon yellow for hover effect
+	draw(liveColor=null, highlight=false){
 		let allPts = this.segments.flat();
 		if(allPts.length === 0) return;
 
-		ctx.lineWidth = 6;
 		for(let i=0;i<this.segments.length;i++){
 			let seg = this.segments[i];
 			if(seg.length === 0) continue;
-			let color = (liveColor && i === this.segments.length-1) ? liveColor : this.segmentColors[i];
+			let color = highlight ? '#ccff00'
+				: (liveColor && i === this.segments.length-1) ? liveColor
+				: this.segmentColors[i];
 			ctx.beginPath();
 			ctx.strokeStyle = color;
+			ctx.lineWidth = highlight ? 9 : 6;
 			ctx.moveTo(seg[0].x,seg[0].y);
 			for(let j=1;j<seg.length;j++) ctx.lineTo(seg[j].x,seg[j].y);
 			ctx.stroke();
-		}
-
-		if(fill && this.filled){
-			ctx.beginPath();
-			for(let seg of this.segments){
-				if(seg.length === 0) continue;
-				ctx.moveTo(seg[0].x,seg[0].y);
-				for(let j=1;j<seg.length;j++) ctx.lineTo(seg[j].x,seg[j].y);
-			}
-			ctx.fillStyle = '#444';
-			ctx.fill();
 		}
 	}
 }
@@ -110,6 +101,7 @@ class Shape{
 let current_shape = new Shape();
 let shapes = [];
 let last_point;
+let hoveredShapeIndex = null;
 
 const center = new Vector(canvas.width/2,canvas.height/2);
 
@@ -146,8 +138,8 @@ function loop(){
 	adjustMouse();
 	ctx.clearRect(-2,-2,canvas.width+2,canvas.height+2);
 	drawGrid(25,25);
-	for(let s of shapes) s.draw(true);
-	current_shape.draw(false, getPickerColor());
+	for(let i=0;i<shapes.length;i++) shapes[i].draw(null, i===hoveredShapeIndex);
+	current_shape.draw(getPickerColor());
 	if(last_point){
 		drawPoint(last_point,5,'green');
 	}
@@ -190,11 +182,12 @@ document.on('mousedown',e=>{
 document.on('contextmenu',e=>{
 	if(e.target == canvas){
 		current_shape.close();
-		current_shape.filled = false;
+		current_shape.segmentColors[current_shape.segmentColors.length-1] = getPickerColor();
 		shapes.push(current_shape);
 		current_shape = new Shape();
 		e.preventDefault();
 		last_point = null;
+		updateShapesPanel();
 	}
 });
 document.on('keydown',e=>{
@@ -204,9 +197,10 @@ document.on('keydown',e=>{
 		current_shape.undoPoint();
 	} else if(e.key == 'v'){
 		if(current_shape.segments.flat().length > 0){
-			current_shape.filled = false;
+			current_shape.segmentColors[current_shape.segmentColors.length-1] = getPickerColor();
 			shapes.push(current_shape);
 			current_shape = new Shape();
+			updateShapesPanel();
 		}
 		last_point = null;
 	} else if(e.key == 'c'){
@@ -216,10 +210,56 @@ document.on('keydown',e=>{
 		save();
 	} else if(e.key == 'f'){
 		shapes.pop();
+		updateShapesPanel();
 	} else if(e.key == 'i'){
 		obj('#import-input').click();
 	}
 });
+
+// ── Shapes panel ─────────────────────────────────────────────────────────────
+
+function updateShapesPanel(){
+	let list = obj('#shapes-list');
+	list.innerHTML = '';
+	shapes.forEach((shape, si) => {
+		let row = document.createElement('div');
+		row.className = 'shape-row';
+
+		let label = document.createElement('span');
+		label.className = 'shape-index';
+		label.textContent = `#${si+1}`;
+		row.appendChild(label);
+
+		let colorWrap = document.createElement('div');
+		colorWrap.className = 'seg-colors';
+		shape.segmentColors.forEach((color, ci) => {
+			let inp = document.createElement('input');
+			inp.type = 'color';
+			inp.value = color;
+			inp.className = 'seg-color-inp';
+			inp.title = `Segment ${ci+1} color`;
+			inp.addEventListener('input', e => {
+				shapes[si].segmentColors[ci] = e.target.value;
+			});
+			colorWrap.appendChild(inp);
+		});
+		row.appendChild(colorWrap);
+
+		let del = document.createElement('button');
+		del.className = 'shape-delete';
+		del.textContent = '✕';
+		del.addEventListener('click', () => {
+			shapes.splice(si, 1);
+			updateShapesPanel();
+		});
+		row.appendChild(del);
+
+		row.addEventListener('mouseenter', () => { hoveredShapeIndex = si; });
+		row.addEventListener('mouseleave', () => { hoveredShapeIndex = null; });
+
+		list.appendChild(row);
+	});
+}
 
 // ── Save ──────────────────────────────────────────────────────────────────────
 
@@ -287,6 +327,7 @@ function loadJSON(json_str){
 		}
 		shapes.push(shape);
 	}
+	updateShapesPanel();
 }
 
 // hidden file input for import
