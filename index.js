@@ -474,7 +474,7 @@ function loop(){
 function updateGame(game){
 }
 
-http.listen(port,()=>{console.log('Serving Port: '+port)});
+http.listen(port,()=>{console.log('Hosting at http://localhost:'+port)});
 
 io.on('connection',socket=>{
 	let logged_on = false;
