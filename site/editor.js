@@ -113,7 +113,7 @@ let snapMode = 0;
 const SNAP_NAMES = ['Grid corners', 'Edge midpoints', 'Cell centers'];
 
 // 0 = grid + centerpoint, 1 = clean (no grid, no center), 2 = blueprint
-let gridMode = 0;
+let gridMode = 2;
 const GRID_MODE_NAMES = ['Grid + Center', 'Clean', 'Blueprint'];
 const BLUEPRINT_BG   = '#001f4d';
 const BLUEPRINT_GRID = 'rgba(100,160,255,0.35)';
