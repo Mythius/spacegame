@@ -202,7 +202,7 @@ document.on('keydown',e=>{
 		current_shape.close();
 	} else if(e.key == 'd' || (e.ctrlKey && e.key == 'z')){
 		current_shape.undoPoint();
-	} else if(e.key == 'n'){
+	} else if(e.key == 'v'){
 		current_shape.breakPath();
 		last_point = null;
 	} else if(e.key == 'c'){
