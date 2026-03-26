@@ -162,6 +162,7 @@ function drawGrid(w,h){
 }
 
 document.on('mousedown',e=>{
+	if(e.target !== canvas) return;
 	adjustMouse();
 	if(e.which != 1) return;
 	last_point = new Vector(MOUSE.pos.x,MOUSE.pos.y);
