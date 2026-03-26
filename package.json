@@ -4,7 +4,7 @@
   "description": "Multiple User Nodejs Server",
   "main": "index.js",
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "start": "node index.js"
   },
   "repository": {
     "type": "git",
@@ -18,6 +18,6 @@
   "homepage": "https://github.com/mythius/server#readme",
   "dependencies": {
     "express": "^4.17.1",
-    "socket.io": "^2.3.0"
+    "socket.io": "^4.8.3"
   }
 }

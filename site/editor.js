@@ -40,6 +40,7 @@ class Line{
 class Shape{
 	constructor(){
 		this.points = [];
+		this.filled = true;
 	}
 	addPoint(point){
 		this.points.push(point);
@@ -60,7 +61,7 @@ class Shape{
 		}
 		ctx.stroke();
 		ctx.fillStyle = '#444';
-		if(fill) ctx.fill();
+		if(fill && this.filled) ctx.fill();
 		ctx.closePath();
 	}
 }
@@ -128,6 +129,8 @@ document.on('mousedown',e=>{
 });
 document.on('contextmenu',e=>{
 	if(e.target == canvas){
+		current_shape.close();
+		current_shape.filled = false;
 		shapes.push(current_shape);
 		current_shape = new Shape();
 		e.preventDefault();
@@ -137,7 +140,7 @@ document.on('contextmenu',e=>{
 document.on('keydown',e=>{
 	if(e.key == ' ' ){
 		current_shape.close();
-	} else if (e.key == 'd'){
+	} else if (e.key == 'd' || (e.ctrlKey && e.key == 'z')){
 		current_shape.points.pop();
 		last_point = current_shape.points[current_shape.points.length-1];
 	} else if (e.key == 'c'){
