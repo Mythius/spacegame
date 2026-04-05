@@ -3,30 +3,52 @@ const app = express();
 const http = require('http').createServer(app);
 const io = require('socket.io')(http);
 const fs = require('fs');
-const system = require('child_process');
-
 app.use(express.json());
-
-
-const file = {
-	save: function(name,text){
-		fs.writeFile(name,text,e=>{
-			if(e) console.log(e);
-		});
-	},
-	read: function(name,callback){
-		fs.readFile(name,(error,buffer)=>{
-			if (error) console.log(error);
-			else callback(buffer.toString());
-		});
-	}
-}
 
 const port = 80;
 const path = __dirname+'/';
 
 app.use(express.static(path+'site/'));
 app.use('/assets', express.static(path+'assets/'));
+app.use('/shared', express.static(path+'shared/'));
+
+// ── Shared game libraries ─────────────────────────────────────────────────────
+const CONSTANTS  = require('./shared/constants');
+const Physics    = require('./shared/physics');
+const Entities   = require('./shared/entity');
+const Components = require('./shared/components');
+const Weapons    = require('./shared/weapons');
+const Resources  = require('./shared/resources');
+const World      = require('./shared/world');
+
+const { Vector2, AABB, circleCircle, sectorBoundaryForce } = Physics;
+const { Entity, Avatar, Projectile }                        = Entities;
+const { ShipGrid, createComponent, COMPONENT_REGISTRY }    = Components;
+const { Weapon, createWeapon, WEAPON_REGISTRY, AMMO_TYPES } = Weapons;
+const { RESOURCE_TYPES, ResourceDeposit, ResourceBag }      = Resources;
+const { SolarSystem }                                        = World;
+
+// ── Player saves ──────────────────────────────────────────────────────────────
+const nodePath = require('path');
+const SAVES_DIR = path + 'saves/';
+if (!fs.existsSync(SAVES_DIR)) fs.mkdirSync(SAVES_DIR, { recursive: true });
+
+function savePlayer(playerId, data) {
+	const dir = SAVES_DIR + playerId + '/';
+	if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+	fs.writeFileSync(dir + 'player.json', JSON.stringify(data, null, 2));
+}
+
+function loadPlayer(playerId) {
+	const file = SAVES_DIR + playerId + '/player.json';
+	if (!fs.existsSync(file)) return null;
+	try { return JSON.parse(fs.readFileSync(file, 'utf8')); }
+	catch(e) { console.error('Failed to load player', playerId, e); return null; }
+}
+
+// ── Solar system (shared world state) ────────────────────────────────────────
+const solarSystem = SolarSystem.generate();
+console.log(`Solar system generated: ${solarSystem.gridW}×${solarSystem.gridH} sectors`);
 
 // ── Asset sync ────────────────────────────────────────────────────────────────
 const SftpClient = require('ssh2-sftp-client');
@@ -160,315 +182,82 @@ app.get(/.*/,function(request,response){
 
 var users = [];
 
-class Game{
-	static games = [];
+const THRUST    = 280;   // units/s²
+const TURN_RATE = 2.8;   // rad/s
+const DRAG      = 0.986;
+const MAX_SPEED = 420;   // units/s
+const BRAKE_MUL = 0.92;
+
+class Game {
+	static games   = [];
 	static next_id = 0;
-	constructor(users){
+
+	constructor(users) {
 		Game.games.push(this);
-		this.id = Game.next_id++;
-		this.space = new Space();
-		let sectors = [{x:0,y:0},{x:7,y:0},{x:7,y:7},{x:0,y:7}];
-		let colors = ['orange','green','cyan','gold'];
+		this.id    = Game.next_id++;
 		this.users = users;
-		this.things = [];
-		this.teams = [];
-		this.userInput = [];
-		for(let i=0;i<4;i++){
-			let team = new Team(colors[i],users[i].name,this.space.getSectorAt(sectors[i].x,sectors[i].y),users[i]);
-			this.teams.push(team);
-			// users[i].team = team; CAUSES STACK OVERFLOW
-		}
-	}
-	parseInput(){
-		for(let team of this.teams){
-			// For structure data see Game.input
-			let usrinpt = this.userInput.filter(data=>data.user == team.user);
-			if(usrinpt) usrinpt = usrinpt[0];
-			else continue;
-			team.mothership.update(usrinpt.input);
-		}
-	}
-	input(user,input){
-		this.userInput.push({user,input});
-	}
-}
+		this.ships = new Map(); // userId → ship state
 
-class Vector{
-	constructor(x,y){
-		this.x = x;
-		this.y = y;
-	}
-}
+		const cx = CONSTANTS.SECTOR_SIZE * (CONSTANTS.SECTOR_GRID_W / 2);
+		const cy = CONSTANTS.SECTOR_SIZE * (CONSTANTS.SECTOR_GRID_H / 2);
 
-class Line{
-	static radians(deg){return deg*Math.PI/180}
-	static distance(x1,y1,x2,y2){return Math.sqrt((x2-x1)**2+(y2-y1)**2)}
-	static getDir(x,y){return(Math.atan(y/x)+(x<0?0:Math.PI))*180/Math.PI}
-	static getPointIn(dir,dist,ox=0,oy=0){
-		let x = ox + Math.cos(dir) * dist;
-		let y = oy + Math.sin(dir) * dist;
-		return new Vector(x,y);
-	}
-	constructor(px1,py1,px2,py2){
-		this.pointA = new Vector(px1,py1);
-		this.pointB = new Vector(px2,py2);
-	}
-	setPos(px1,py1,px2,py2){
-		this.pointA.x = px1;
-		this.pointA.y = py1;
-		this.pointB.x = px2;
-		this.pointB.y = py2;
-	}
-	touches(line){
-		const x1 = this.pointA.x;
-		const y1 = this.pointA.y;
-		const x2 = this.pointB.x;
-		const y2 = this.pointB.y;
-		const x3 = line.pointA.x;
-		const y3 = line.pointA.y;
-		const x4 = line.pointB.x;
-		const y4 = line.pointB.y;
-
-		const den=(x1-x2)*(y3-y4)-(y1-y2)*(x3-x4);
-
-		if(den==0) return;
-
-		const t=((x1-x3)*(y3-y4)-(y1-y3)*(x3-x4))/den;
-		const u=-((x1-x2)*(y1-y3)-(y1-y2)*(x1-x3))/den;
-
-		if(t>=0&&t<=1&&u>=0&&u<=1){
-			const pt = new Vector();
-
-			pt.x=x1+t*(x2-x1);
-			pt.y=y1+t*(y2-y1);
-
-			return pt;
-		} else return;
-	}
-}
-
-class Sector{
-	static size = 600;
-	constructor(tx,ty){
-		this.x = tx;
-		this.y = ty;
-	}
-	hasPoint(x,y){
-		let size = Sector.size;
-		return x>=this.x*size&&x<this.x*size+size&&y>=this.y*size&&y<this.y*size+size;
-	}
-}
-
-class Thing{
-	constructor(position,speed,direction,name){
-		this.position = position;
-		this.speed = speed;
-		this.direction = direction;
-		this.name = name;
-		this.color = 'white';
-		this.alive = true;
-	}
-	loadImageVector(path){
-		if(typeof path == 'string'){
-			file.read(__dirname+'/'+path,text=>{
-				try{
-					// NOTE TO SELF:
-					// Image saved as JSON, 2D array
-					// Each sub-array is a new path
-					// Each element should have a distance / direction 
-					// from the center (radial geometry)
-					let paths = JSON.parse(text);
-					this.image_data = paths;
-				} catch(e){
-					console.log(e);
-				}
+		for (const user of users) {
+			const angle = Math.random() * Math.PI * 2;
+			this.ships.set(user.id, {
+				id: user.id, name: user.name,
+				x: cx + Math.cos(angle) * 300,
+				y: cy + Math.sin(angle) * 300,
+				vx: 0, vy: 0,
+				direction: angle,
+				hp: 100, maxHp: 100,
+				thrusting: false,
+				input: {},
 			});
-		} else {
-			this.image_data = path;
 		}
 	}
-	update(target){
-		let x = this.position.x;
-		let y = this.position.y;
-		if(target instanceof 'Vector'){ // turn towards target if targed moved
-			let new_direction = Line.getDir(target.x-x,target.y-y);
-			this.direction = new_direction;
-		}
-		let nextPosition = Line.getPointIn(this.direction,this.speed,x,y);
-		this.position.x = nextPosition.x;
-		this.position.y = nextPosition.y;
-	}
-}
 
-class Team{
-	static max_ship_count = 200;
-	constructor(color,name,start_sector,user){
-		this.user = user;
-		this.color = color;
-		this.name = name;
-		this.mothership = new Mothership(new Vector(start_sector.x,start_sector.y),0,0);
-		this.ships = [];
-		this.bullets = [];
+	applyInput(userId, input) {
+		const ship = this.ships.get(userId);
+		if (ship) ship.input = input;
 	}
-	addShip(name,health,max_speed,reload_speed,bullet_damage,max_cargo,bullet_speed){
-		if(this.mothership.hanger.length >= Team.max_ship_count) return false;
-		let ship = new Ship(this.mothership.position,0,0,name);
-		ship.max_speed = max_speed;
-		ship.reload_speed = reload_speed;
-		ship.bullet_damage = bullet_damage;
-		ship.max_cargo = max_cargo;
-		ship.bullet_speed = bullet_speed;
-		ship.health = health;
-		ship.team = this;
-		ship.color = this.color;
-		ship.visible = false;
-		this.mothership.hanger.push(ship);
-		this.ships.push(ship);
-		Team.teams.push(this);
-		return true;
-	}
-}
 
-class Bullet extends Thing{
-	constructor(...args){
-		super(...args);
-		this.bullet_damage = 1;
-		this.team = null;
-		this.visible = true;
-	}
-}
+	tick(dt) {
+		for (const ship of this.ships.values()) {
+			const inp = ship.input || {};
 
-class Ship extends Thing{
-	constructor(...args){
-		super(...args);
-		this.reload_speed = 5; // in frames
-		this.reload = 0;
-		this.health = 20;
-		this.bullet_damage = 1;
-		this.bullet_speed = 5;
-		this.team = null;
-		this.cargo = [];
-		this.max_cargo = 0;
-		this.selected = false;
-		this.max_speed = 10;
-	}
-	assignTask(procedure){
-		this.procedure = procedure;
-	}
-	shoot(){
-		if(this.reload != 0) return;
-		this.reload = this.reload_speed;
-		let b = new Bullet(this.position,this.bullet_speed,this.direction);
-		b.team = this.team;
-		b.color = this.color;
-		this.team.bullets.push(b);
-	}
-	update(task=0,target){
-		switch(task){
-			case 0: break;
-			case 1: this.shoot(); break;
-			case 2: this.dropBomb(); break;
-		}
-		this.reload = Math.max(this.reload-1,0);
-		super.update(target);
-	}
-}
+			if (inp.turnLeft)  ship.direction -= TURN_RATE * dt;
+			if (inp.turnRight) ship.direction += TURN_RATE * dt;
 
-class Mothership extends Ship{
-	constructor(...args){
-		super(...args);
-		this.hanger = [];
-		this.max_cargo = 2000;
-		this.loadImageVector('assets/mythius.json');
-		// this.team = team;
-	}
-	buildShips(ships){
-		this.hanger = this.hanger.append(ships);
-	}
-	update(userInput){
-		super.update() // probably unnecisary because speed 0
-		// example of userInput (JSON)
-		// {
-		// 	selectedShips: [Ship,Ship,Ship,Ship] (Must send selected ships every tick or they get unselected)
-		//  mission: "String"
-		//  shipsToBuild: {number:"Number",stats: { @Param for Team.addShip } }
-		//  useWeapon: {active: "Boolean", sector: "Sector"}
-		//  view: {sector:"Sector",offset:"Vector"}
-		//  trade: {material:"Material",amount:"Number",from:"TradingPost"}
-		//  chat: "String"
-		//  
-		// }
-	}
-}
-
-class Asteroid extends Thing{
-}
-
-class Bomb extends Thing{
-	constructor(wait,radius,...args){
-		super(...args);
-		this.countdown = wait;
-		this.speed = 0;
-	}
-	update(target){
-		super.update(target);
-		this.countdown--;
-		if(this.countdown == 0){
-			// TODO: Explode
-		}
-	}
-}
-
-class Space{
-	static width = 8;
-	static height = 8;
-	static team_count = 4;
-	constructor(){
-		this.sectors = [];
-		for(let x=0;x<Space.width;x++){
-			let col = [];
-			for(let y=0;y<Space.height;y++){
-				col.push(new Sector(x,y));
+			if (inp.thrust) {
+				ship.vx += Math.cos(ship.direction) * THRUST * dt;
+				ship.vy += Math.sin(ship.direction) * THRUST * dt;
 			}
-			this.sectors.push(col);
-		}
-		// Hopefully Removing this doesn't cause issues
-		// this.teams = [];
-		// let start_sectors = []
-		// for(let i=0;i<Space.team_count;i++){
+			if (inp.brake) { ship.vx *= BRAKE_MUL; ship.vy *= BRAKE_MUL; }
 
-		// }
-	}
-	forEach(callback){
-		for(let col of this.sectors){
-			for(let sector of col){
-				let stop = callback(sector);
-				if(stop) return;
+			ship.vx *= DRAG;
+			ship.vy *= DRAG;
+
+			const spd = Math.sqrt(ship.vx ** 2 + ship.vy ** 2);
+			if (spd > MAX_SPEED) {
+				ship.vx = ship.vx / spd * MAX_SPEED;
+				ship.vy = ship.vy / spd * MAX_SPEED;
 			}
+
+			ship.x += ship.vx * dt;
+			ship.y += ship.vy * dt;
+			ship.thrusting = !!inp.thrust;
 		}
 	}
-	getSectorWithPoint(point){
-		if(!point instanceof 'Vector') return;
-		let result;
-		this.forEach(sector=>{
-			if(sector.hasPoint(point.x,point.y)){
-				result = sector;
-				return true; // Stop search when found
-			}
-		});
-		return result;
-	}
-	getSectorAt(x,y){
-		if(x>=0&&x<Space.width&&y>=0&&y<Space.height){
-			return this.sectors[x][y];
-		}
-	}
-}
 
-class TradingPost{
-}
-
-class Material{
+	getState() {
+		return {
+			t: Date.now(),
+			ships: [...this.ships.values()].map(
+				({ id, name, x, y, vx, vy, direction, hp, maxHp, thrusting }) =>
+				({ id, name, x, y, vx, vy, direction, hp, maxHp, thrusting })
+			),
+		};
+	}
 }
 
 class User{
@@ -490,15 +279,17 @@ function updateUsers(){
 	io.emit('players',users_in_lobby);
 }
 
-function loop(){
-	io.emit('render',Game.games);
-	for(let game of Game.games){
-		updateGame(game);
-	}
-	io.emit('getInput');
-}
+let lastLoopTime = Date.now();
 
-function updateGame(game){
+function loop() {
+	const now = Date.now();
+	const dt  = Math.min((now - lastLoopTime) / 1000, 0.1);
+	lastLoopTime = now;
+
+	for (const game of Game.games) {
+		game.tick(dt);
+		io.to('game_' + game.id).emit('gameState', game.getState());
+	}
 }
 
 http.listen(port,()=>{console.log('Hosting at http://localhost:'+port)});
@@ -523,17 +314,19 @@ io.on('connection',socket=>{
 		if(playing) return;
 		playing = true;
 		current_game = game;
-		let t = game.teams.filter(e=>e.user == me)[0];
-		team = t;
-		socket.emit('start_game',{id:game.id,team:t});
-		console.log(t);
-		console.log(`${me.name} is in party.`);
+		socket.join('game_' + game.id);
+		socket.emit('start_game', { gameId: game.id, playerId: me.id });
+		console.log(`${me.name} joined game ${game.id}`);
 	}
-	socket.on('accept',player=>{
-		let actual_player = users.filter(e=>e.id == player.id);
-		if(actual_player.length){
-			actual_player = actual_player[0];
-			actual_player.accept(me);
+	socket.on('accept', player => {
+		const actual_player = users.find(e => e.id === player.id);
+		if (!actual_player) return;
+		// Tell the requester that me accepted (adds me to their friends list)
+		actual_player.accept(me);
+		// Also add them to MY friends list so either side can launch
+		if (!friends.includes(actual_player)) {
+			friends.push(actual_player);
+			socket.emit('accepted', actual_player);
 		}
 	});
 	socket.on('login',name=>{
@@ -558,22 +351,15 @@ io.on('connection',socket=>{
 			console.log(`Failed Request to ${id}.`);
 		}
 	});
-	socket.on('input',input_data=>{
-		if(!current_game) return;
-		current_game.input(me,input_data);
+	socket.on('playerInput', input => {
+		if (!current_game) return;
+		current_game.applyInput(me.id, input);
 	});
-	socket.on('launch',()=>{
-		if(friends.length != 4){
-			// TODO: Send Do Stuff
-			console.log('Need 4 People');
-			console.log(friends);
-			return;
-		}
+	socket.on('launch', () => {
+		if (friends.length < 1) return;
 		let g = new Game(friends);
-		console.log(`Party Started`);
-		for(let p of friends){
-			p.launch(g);
-		}
+		console.log(`Game ${g.id} started with: ${friends.map(f=>f.name).join(', ')}`);
+		for (let p of friends) p.launch(g);
 	});
 });
 

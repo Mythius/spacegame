@@ -2,14 +2,15 @@ var socket = io();
 
 let logged_in = false;
 let game_started = false;
-let game_id,color,team;
+let game_id, my_player_id;
 
 obj('#name').focus();
 
-obj('#launch').on('click',launch);
+obj('#start').on('click', login);
+obj('#launch').on('click', launch);
 
-document.on('keydown',e=>{
-	if(e.key == 'Enter') login();
+document.on('keydown', e => {
+	if (e.key == 'Enter') login();
 });
 
 
@@ -69,12 +70,11 @@ socket.on('accepted',player=>{
 	obj('main').innerHTML += player.name + ' joined party!<br>';
 });
 
-socket.on('start_game',(gdata)=>{
+socket.on('start_game', ({ gameId, playerId }) => {
+	game_id      = gameId;
+	my_player_id = playerId;
 	hide(obj('lobby'));
-	show(obj('game'));
-	game_id = gdata.id;
-	team = gdata.team;
-	color = gdata.team.color;
+	obj('game').style.visibility = 'visible';
 });
 
 // hide(obj('login'));

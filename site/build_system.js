@@ -40,12 +40,13 @@ class Camera {
 
 // ── PlacedObject ──────────────────────────────────────────────────────────────
 class PlacedObject {
-	constructor(assetName, gx, gy, scale) {
+	constructor(assetName, gx, gy, scale, rotation = 0) {
 		this.assetName = assetName;
 		this.gx = gx;
 		this.gy = gy;
 		this.polar = new PolarObject(`/assets/${assetName}`);
 		this.polar.scale = scale;
+		this.polar.direction = rotation;
 		this.polar.onload = () => this.polar.show();
 	}
 	render(ctx) {
@@ -65,6 +66,8 @@ class BuildSystem {
 		this.assets      = [];
 		this.selectedAsset = null;
 		this.sizeIndex   = 1;           // index into CELL_SIZES (default = 2 cells)
+		this.snapMode    = 'corner';    // 'corner' | 'center'
+		this.rotation    = 0;           // degrees, applied to preview and placed objects
 		this.preview     = null;        // PolarObject ghost
 		this.hoverCell   = { gx: 0, gy: 0 };
 		this.mouseScreen = { x: 0, y: 0 };
@@ -105,6 +108,7 @@ class BuildSystem {
 		);
 		this.preview = new PolarObject(`/assets/${name}`);
 		this.preview.scale = this._placementScale();
+		this.preview.direction = this.rotation;
 		this.preview.onload = () => this.preview.show();
 	}
 
@@ -115,6 +119,16 @@ class BuildSystem {
 	_updateSizeLabel() {
 		let el = document.querySelector('#build-size-label');
 		if (el) el.textContent = `Size: ${CELL_SIZES[this.sizeIndex]} cell${CELL_SIZES[this.sizeIndex] > 1 ? 's' : ''}`;
+	}
+
+	_updateSnapLabel() {
+		let el = document.querySelector('#build-snap-label');
+		if (el) el.textContent = `Snap: ${this.snapMode}s`;
+	}
+
+	_updateRotationLabel() {
+		let el = document.querySelector('#build-rotation-label');
+		if (el) el.textContent = `Rotation: ${this.rotation}°`;
 	}
 
 	deselect() {
@@ -128,6 +142,16 @@ class BuildSystem {
 			if (!this.active) return;
 			this.keys[e.key.toLowerCase()] = true;
 			if (e.key === 'Escape') this.deselect();
+			if (e.key.toLowerCase() === 'r') {
+				this.rotation = (this.rotation + 45) % 360;
+				if (this.preview) this.preview.direction = this.rotation;
+				this._updateRotationLabel();
+			}
+			if (e.key === 'Tab') {
+				e.preventDefault();
+				this.snapMode = this.snapMode === 'corner' ? 'center' : 'corner';
+				this._updateSnapLabel();
+			}
 		});
 		document.addEventListener('keyup', e => {
 			this.keys[e.key.toLowerCase()] = false;
@@ -137,10 +161,17 @@ class BuildSystem {
 			let r = this.canvas.getBoundingClientRect();
 			this.mouseScreen = { x: e.clientX - r.left, y: e.clientY - r.top };
 			let w = this.camera.screenToWorld(this.mouseScreen.x, this.mouseScreen.y, this.canvas);
-			this.hoverCell = {
-				gx: Math.round(w.x / CELL),
-				gy: Math.round(w.y / CELL)
-			};
+			if (this.snapMode === 'center') {
+				this.hoverCell = {
+					gx: Math.floor(w.x / CELL) + 0.5,
+					gy: Math.floor(w.y / CELL) + 0.5
+				};
+			} else {
+				this.hoverCell = {
+					gx: Math.round(w.x / CELL),
+					gy: Math.round(w.y / CELL)
+				};
+			}
 		});
 
 		this.canvas.addEventListener('click', e => {
@@ -149,7 +180,7 @@ class BuildSystem {
 			let key = `${gx},${gy}`;
 			if (gx === 0 && gy === 0) return;
 			if (!this.placed.has(key)) {
-				this.placed.set(key, new PlacedObject(this.selectedAsset, gx, gy, this._placementScale()));
+				this.placed.set(key, new PlacedObject(this.selectedAsset, gx, gy, this._placementScale(), this.rotation));
 			}
 		});
 
