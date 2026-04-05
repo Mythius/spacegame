@@ -5,7 +5,21 @@ const io = require('socket.io')(http);
 const fs = require('fs');
 app.use(express.json());
 
-const port = 80;
+const file = {
+	save: function(name,text){
+		fs.writeFile(name,text,e=>{
+			if(e) console.log(e);
+		});
+	},
+	read: function(name,callback){
+		fs.readFile(name,(error,buffer)=>{
+			if (error) console.log(error);
+			else callback(buffer.toString());
+		});
+	}
+}
+
+const port = 1301;
 const path = __dirname+'/';
 
 app.use(express.static(path+'site/'));
