@@ -1,0 +1,91 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<title>Asset Manager</title>
+<style>
+  body { background: #111; color: #eee; font-family: monospace; padding: 2rem; }
+  h1 { margin-bottom: 1rem; }
+  #status { color: #aaa; margin-bottom: 1rem; min-height: 1.2em; }
+  table { border-collapse: collapse; width: 100%; max-width: 600px; }
+  th { text-align: left; border-bottom: 1px solid #444; padding: 0.4rem 0.6rem; color: #aaa; }
+  td { padding: 0.4rem 0.6rem; border-bottom: 1px solid #222; }
+  button.del {
+    background: #8b1a1a; color: #fff; border: none; padding: 0.25rem 0.7rem;
+    cursor: pointer; border-radius: 3px; font-family: monospace;
+  }
+  button.del:hover { background: #c0392b; }
+  button.del:disabled { background: #444; cursor: default; }
+  #refresh { background: #1a3a5c; color: #fff; border: none; padding: 0.3rem 0.9rem;
+    cursor: pointer; border-radius: 3px; font-family: monospace; margin-bottom: 1rem; }
+  #refresh:hover { background: #2471a3; }
+  .ok  { color: #2ecc71; }
+  .err { color: #e74c3c; }
+</style>
+</head>
+<body>
+<h1>Asset Manager</h1>
+<button id="refresh" onclick="load()">Refresh</button>
+<div id="status">Loading…</div>
+<table>
+  <thead><tr><th>File</th><th>Delete</th></tr></thead>
+  <tbody id="list"></tbody>
+</table>
+
+<script>
+async function load() {
+  const status = document.getElementById('status');
+  const list   = document.getElementById('list');
+  status.textContent = 'Loading…';
+  status.className = '';
+  list.innerHTML = '';
+  try {
+    const r = await fetch('/asset-list');
+    const { files, error } = await r.json();
+    if (error) { status.textContent = 'Error: ' + error; status.className = 'err'; return; }
+    status.textContent = files.length + ' file(s)';
+    for (const f of files.sort()) {
+      const tr = document.createElement('tr');
+      tr.innerHTML = `<td>${f}</td><td><button class="del" onclick="del(this,'${f}')">Delete</button></td>`;
+      list.appendChild(tr);
+    }
+  } catch(e) {
+    status.textContent = 'Fetch error: ' + e.message;
+    status.className = 'err';
+  }
+}
+
+async function del(btn, name) {
+  if (!confirm(`Delete "${name}" locally and from remote?`)) return;
+  btn.disabled = true;
+  btn.textContent = '…';
+  const status = document.getElementById('status');
+  try {
+    const r = await fetch('/asset-delete', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ name })
+    });
+    const { ok, error } = await r.json();
+    if (ok) {
+      status.textContent = `Deleted: ${name}`;
+      status.className = 'ok';
+      btn.closest('tr').remove();
+    } else {
+      status.textContent = `Failed: ${error}`;
+      status.className = 'err';
+      btn.disabled = false;
+      btn.textContent = 'Delete';
+    }
+  } catch(e) {
+    status.textContent = 'Fetch error: ' + e.message;
+    status.className = 'err';
+    btn.disabled = false;
+    btn.textContent = 'Delete';
+  }
+}
+
+load();
+</script>
+</body>
+</html>

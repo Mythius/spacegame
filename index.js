@@ -108,6 +108,41 @@ app.post('/beam-save', (req, res) => {
 	}
 });
 
+// delete asset locally and from remote
+app.post('/asset-delete', async (req, res) => {
+	const { name } = req.body;
+	if (!name) return res.json({ ok: false, error: 'missing name' });
+	const safe = nodePath.basename(name);
+	if (!safe || safe.includes('..')) return res.json({ ok: false, error: 'invalid name' });
+	const localPath = ASSETS + safe;
+
+	// delete locally
+	try {
+		if (fs.existsSync(localPath)) fs.unlinkSync(localPath);
+	} catch(e) {
+		return res.json({ ok: false, error: 'local delete failed: ' + e.message });
+	}
+
+	// delete from remote
+	const sftp = new SftpClient();
+	try {
+		const os = require('os');
+		const keyPath = process.env.SSH_KEY || nodePath.join(os.homedir(), '.ssh', 'id_ed25519');
+		const connectOpts = { host: REMOTE_HOST, username: REMOTE_USER };
+		if (fs.existsSync(keyPath)) connectOpts.privateKey = fs.readFileSync(keyPath);
+		else if (process.env.SSH_AUTH_SOCK) connectOpts.agent = process.env.SSH_AUTH_SOCK;
+		await sftp.connect(connectOpts);
+		const remotePath = `${REMOTE_DIR}/${safe}`;
+		const exists = await sftp.exists(remotePath);
+		if (exists) await sftp.delete(remotePath);
+		await sftp.end();
+		res.json({ ok: true });
+	} catch(e) {
+		try { await sftp.end(); } catch(_) {}
+		res.json({ ok: false, error: 'remote delete failed: ' + e.message });
+	}
+});
+
 app.post('/sync', async (req, res) => {
 	const sftp = new SftpClient();
 	const lines = [];
