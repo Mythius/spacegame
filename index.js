@@ -41,6 +41,7 @@ const { ShipGrid, createComponent, COMPONENT_REGISTRY }    = Components;
 const { Weapon, createWeapon, WEAPON_REGISTRY, AMMO_TYPES } = Weapons;
 const { RESOURCE_TYPES, ResourceDeposit, ResourceBag }      = Resources;
 const { SolarSystem }                                        = World;
+const { buildSector }                                        = require('./shared/worldgen');
 
 // ── Player saves ──────────────────────────────────────────────────────────────
 const nodePath = require('path');
@@ -245,7 +246,10 @@ class Game {
 		Game.games.push(this);
 		this.id    = Game.next_id++;
 		this.users = users;
-		this.ships = new Map(); // userId → ship state
+		this.ships          = new Map(); // userId → ship state
+		this.sectorDeposits = new Map(); // "gx_gy" → { depositId → ResourceDeposit }
+		this.playerBags     = new Map(); // userId → ResourceBag
+		this.bases          = new Map(); // "gx_gy" → Map("gx,gy" → { assetName, scale, rotation })
 
 		const cx = CONSTANTS.SECTOR_SIZE * (CONSTANTS.SECTOR_GRID_W / 2);
 		const cy = CONSTANTS.SECTOR_SIZE * (CONSTANTS.SECTOR_GRID_H / 2);
@@ -262,7 +266,59 @@ class Game {
 				thrusting: false,
 				input: {},
 			});
+			this.playerBags.set(user.id, new ResourceBag(500));
 		}
+	}
+
+	// Lazily generate and cache deposits for a sector (matches client worldgen exactly)
+	getSectorDeposits(gx, gy) {
+		const key = `${gx}_${gy}`;
+		if (!this.sectorDeposits.has(key)) {
+			const { ores } = buildSector(gx, gy, CONSTANTS);
+			const deps = {};
+			for (const ore of ores) {
+				deps[ore.id] = new ResourceDeposit({
+					id: ore.id, resourceType: ore.type, x: ore.x, y: ore.y,
+				});
+			}
+			this.sectorDeposits.set(key, deps);
+		}
+		return this.sectorDeposits.get(key);
+	}
+
+	// Returns { type, amount, depleted, bag } or null if invalid/out of range
+	tryMine(userId, depositId) {
+		const ship = this.ships.get(userId);
+		if (!ship) return null;
+		const [gx, gy] = depositId.split('_').map(Number);
+		const dep = this.getSectorDeposits(gx, gy)[depositId];
+		if (!dep || dep.depleted) return null;
+		const dx = ship.x - dep.x, dy = ship.y - dep.y;
+		if (dx * dx + dy * dy > 250 * 250) return null;
+		const bag    = this.playerBags.get(userId);
+		const mined  = dep.mine(5);
+		if (mined > 0) bag.add(dep.resourceType, mined);
+		return { depositId, type: dep.resourceType, amount: mined, depleted: dep.depleted, bag: { ...bag._contents } };
+	}
+
+	// Base building
+	placeBuilding(sectorKey, gx, gy, assetName, scale, rotation) {
+		if (!this.bases.has(sectorKey)) this.bases.set(sectorKey, new Map());
+		this.bases.get(sectorKey).set(`${gx},${gy}`, { assetName, scale, rotation });
+	}
+
+	removeBuilding(sectorKey, gx, gy) {
+		const base = this.bases.get(sectorKey);
+		if (base) base.delete(`${gx},${gy}`);
+	}
+
+	getSectorBase(sectorKey) {
+		const base = this.bases.get(sectorKey);
+		if (!base || base.size === 0) return [];
+		return [...base.entries()].map(([key, val]) => {
+			const [gx, gy] = key.split(',').map(Number);
+			return { gx, gy, ...val };
+		});
 	}
 
 	applyInput(userId, input) {
@@ -365,6 +421,10 @@ io.on('connection',socket=>{
 		current_game = game;
 		socket.join('game_' + game.id);
 		socket.emit('start_game', { gameId: game.id, playerId: me.id });
+		// Send current base state for all sectors that have buildings
+		const baseState = {};
+		for (const [sk, _] of game.bases) baseState[sk] = game.getSectorBase(sk);
+		socket.emit('base:state', baseState);
 		console.log(`${me.name} joined game ${game.id}`);
 	}
 	socket.on('accept', player => {
@@ -403,6 +463,27 @@ io.on('connection',socket=>{
 	socket.on('playerInput', input => {
 		if (!current_game) return;
 		current_game.applyInput(me.id, input);
+	});
+
+	socket.on('mine', depositId => {
+		if (!current_game) return;
+		const result = current_game.tryMine(me.id, depositId);
+		if (!result) return;
+		if (result.depleted)
+			io.to('game_' + current_game.id).emit('deposit:depleted', depositId);
+		socket.emit('resources:update', result.bag);
+	});
+
+	socket.on('base:place', ({ sectorKey, gx, gy, assetName, scale, rotation }) => {
+		if (!current_game) return;
+		current_game.placeBuilding(sectorKey, gx, gy, assetName, scale, rotation);
+		io.to('game_' + current_game.id).emit('base:placed', { sectorKey, gx, gy, assetName, scale, rotation });
+	});
+
+	socket.on('base:remove', ({ sectorKey, gx, gy }) => {
+		if (!current_game) return;
+		current_game.removeBuilding(sectorKey, gx, gy);
+		io.to('game_' + current_game.id).emit('base:removed', { sectorKey, gx, gy });
 	});
 	socket.on('launch', () => {
 		if (friends.length < 1) return;

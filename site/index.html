@@ -7,17 +7,21 @@
 	<link href="https://fonts.googleapis.com/css?family=Audiowide&display=swap" rel="stylesheet">
 	<script src=/socket.io/socket.io.js></script>
 	<script src="/shared/constants.js"></script>
+	<script src="/shared/worldgen.js"></script>
 	<script src="helpers.js"></script>
 	<style>
 		#build {
 			display: none;
 			position: fixed;
 			inset: 0;
-			background: #03060f;
+			/* transparent — game canvas shows through */
 		}
 		#build-canvas {
+			position: absolute;
+			inset: 0;
+			width: 100%;
+			height: 100%;
 			display: block;
-			opacity: 1;
 		}
 		#build-ui {
 			position: fixed;
@@ -65,7 +69,7 @@
 		}
 		.palette-btn:hover { background: #12122a; color: white; }
 		.palette-btn.selected { background: #0a1f3a; border-color: #4af; color: #7cf; }
-		#build-size-label, #build-snap-label, #build-rotation-label {
+		#build-size-label, #build-snap-label, #build-rotation-label, #build-flip-label {
 			font-size: 11px;
 			color: #7cf;
 			padding: 2px 0;
@@ -111,6 +115,7 @@
 			<div id="build-size-label">Size: 2 cells</div>
 			<div id="build-snap-label">Snap: corners</div>
 			<div id="build-rotation-label">Rotation: 0°</div>
+			<div id="build-flip-label">Flip: —</div>
 		<div id="build-hint">
 				Click — place<br>
 				Right click — remove<br>
@@ -118,6 +123,8 @@
 				Scroll — zoom<br>
 				Ctrl+Scroll — resize<br>
 				R — rotate 45°<br>
+				F — flip horizontal<br>
+				Shift+F — flip vertical<br>
 				Tab — toggle snap<br>
 				Esc — deselect
 			</div>

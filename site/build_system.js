@@ -40,13 +40,15 @@ class Camera {
 
 // ── PlacedObject ──────────────────────────────────────────────────────────────
 class PlacedObject {
-	constructor(assetName, gx, gy, scale, rotation = 0) {
+	constructor(assetName, gx, gy, scale, rotation = 0, flipH = false, flipV = false) {
 		this.assetName = assetName;
 		this.gx = gx;
 		this.gy = gy;
 		this.polar = new PolarObject(`/assets/${assetName}`);
 		this.polar.scale = scale;
 		this.polar.direction = rotation;
+		this.polar.flipH = flipH;
+		this.polar.flipV = flipV;
 		this.polar.onload = () => this.polar.show();
 	}
 	render(ctx) {
@@ -58,21 +60,40 @@ class PlacedObject {
 
 // ── BuildSystem ───────────────────────────────────────────────────────────────
 class BuildSystem {
-	constructor(canvas) {
+	constructor(canvas, sectorKey, initialCam) {
 		this.canvas      = canvas;
 		this.ctx         = canvas.getContext('2d');
 		this.camera      = new Camera();
 		this.placed      = new Map();   // "gx,gy" → PlacedObject
+		this.sectorKey   = sectorKey || null;
+		this.validCells  = null;        // Set of "gx,gy" that sit on the asteroid
 		this.assets      = [];
 		this.selectedAsset = null;
-		this.sizeIndex   = 1;           // index into CELL_SIZES (default = 2 cells)
-		this.snapMode    = 'corner';    // 'corner' | 'center'
-		this.rotation    = 0;           // degrees, applied to preview and placed objects
-		this.preview     = null;        // PolarObject ghost
+		this.sizeIndex   = 1;
+		this.snapMode    = 'corner';
+		this.rotation    = 0;
+		this.flipH       = false;
+		this.flipV       = false;
+		this.preview     = null;
 		this.hoverCell   = { gx: 0, gy: 0 };
 		this.mouseScreen = { x: 0, y: 0 };
 		this.keys        = {};
 		this.active      = true;
+
+		// Sync camera to game view when launched in-game
+		if (initialCam) {
+			this.camera.x    = initialCam.x;
+			this.camera.y    = initialCam.y;
+			this.camera.zoom = initialCam.zoom || 1;
+		}
+
+		// Compute which grid cells fall on the asteroid polygon
+		if (sectorKey && typeof buildSector !== 'undefined') {
+			const _C = (window.Shared && window.Shared.CONSTANTS) || { SECTOR_SIZE: 6000, SECTOR_GRID_W: 8, SECTOR_GRID_H: 8 };
+			const [gx, gy] = sectorKey.split('_').map(Number);
+			const sec = buildSector(gx, gy, _C);
+			this.validCells = this._computeValidCells(sec);
+		}
 
 		this._bindEvents();
 		this._loadAssets();
@@ -109,6 +130,8 @@ class BuildSystem {
 		this.preview = new PolarObject(`/assets/${name}`);
 		this.preview.scale = this._placementScale();
 		this.preview.direction = this.rotation;
+		this.preview.flipH = this.flipH;
+		this.preview.flipV = this.flipV;
 		this.preview.onload = () => this.preview.show();
 	}
 
@@ -131,6 +154,50 @@ class BuildSystem {
 		if (el) el.textContent = `Rotation: ${this.rotation}°`;
 	}
 
+	_updateFlipLabel() {
+		let el = document.querySelector('#build-flip-label');
+		if (!el) return;
+		let tag = (!this.flipH && !this.flipV) ? '—'
+		        : (this.flipH && this.flipV)    ? 'H+V'
+		        : this.flipH                    ? 'H'
+		        :                                 'V';
+		el.textContent = `Flip: ${tag}`;
+	}
+
+	_applyFlipToPreview() {
+		if (!this.preview) return;
+		this.preview.flipH = this.flipH;
+		this.preview.flipV = this.flipV;
+	}
+
+	// ── Valid cell computation ────────────────────────────────────────────────
+	_pointInPoly(px, py, verts) {
+		let inside = false;
+		for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
+			const xi = verts[i].x, yi = verts[i].y;
+			const xj = verts[j].x, yj = verts[j].y;
+			if (((yi > py) !== (yj > py)) && (px < (xj - xi) * (py - yi) / (yj - yi) + xi))
+				inside = !inside;
+		}
+		return inside;
+	}
+
+	_computeValidCells({ asteroidPts, baseR }) {
+		const verts = asteroidPts.map(p => ({
+			x: Math.cos(p.a) * p.r,
+			y: Math.sin(p.a) * p.r,
+		}));
+		const cells = new Set();
+		const r = Math.ceil(baseR / CELL) + 1;
+		for (let gy = -r; gy <= r; gy++) {
+			for (let gx = -r; gx <= r; gx++) {
+				if (this._pointInPoly(gx * CELL, gy * CELL, verts))
+					cells.add(`${gx},${gy}`);
+			}
+		}
+		return cells;
+	}
+
 	deselect() {
 		this.selectedAsset = null;
 		this.preview = null;
@@ -146,6 +213,16 @@ class BuildSystem {
 				this.rotation = (this.rotation + 45) % 360;
 				if (this.preview) this.preview.direction = this.rotation;
 				this._updateRotationLabel();
+			}
+			if (e.key === 'f') {
+				this.flipH = !this.flipH;
+				this._applyFlipToPreview();
+				this._updateFlipLabel();
+			}
+			if (e.key === 'F') {
+				this.flipV = !this.flipV;
+				this._applyFlipToPreview();
+				this._updateFlipLabel();
 			}
 			if (e.key === 'Tab') {
 				e.preventDefault();
@@ -174,20 +251,36 @@ class BuildSystem {
 			}
 		});
 
-		this.canvas.addEventListener('click', e => {
+		this.canvas.addEventListener('click', () => {
 			if (!this.selectedAsset) return;
 			let { gx, gy } = this.hoverCell;
 			let key = `${gx},${gy}`;
-			if (gx === 0 && gy === 0) return;
+			if (this.validCells && !this.validCells.has(key)) return;
 			if (!this.placed.has(key)) {
-				this.placed.set(key, new PlacedObject(this.selectedAsset, gx, gy, this._placementScale(), this.rotation));
+				const scale    = this._placementScale();
+				const rotation = this.rotation;
+				const flipH    = this.flipH;
+				const flipV    = this.flipV;
+				this.placed.set(key, new PlacedObject(this.selectedAsset, gx, gy, scale, rotation, flipH, flipV));
+				if (this.sectorKey && typeof socket !== 'undefined') {
+					socket.emit('base:place', {
+						sectorKey: this.sectorKey, gx, gy,
+						assetName: this.selectedAsset, scale, rotation, flipH, flipV,
+					});
+				}
 			}
 		});
 
 		this.canvas.addEventListener('contextmenu', e => {
 			e.preventDefault();
 			let { gx, gy } = this.hoverCell;
-			this.placed.delete(`${gx},${gy}`);
+			const key = `${gx},${gy}`;
+			if (this.placed.has(key)) {
+				this.placed.delete(key);
+				if (this.sectorKey && typeof socket !== 'undefined') {
+					socket.emit('base:remove', { sectorKey: this.sectorKey, gx, gy });
+				}
+			}
 		});
 
 		this.canvas.addEventListener('wheel', e => {
@@ -227,8 +320,19 @@ class BuildSystem {
 		let x1 = Math.ceil(br.x  / CELL) + 1;
 		let y1 = Math.ceil(br.y  / CELL) + 1;
 
+		// Shade valid (on-asteroid) cells
+		if (this.validCells) {
+			ctx.fillStyle = 'rgba(80,160,100,0.10)';
+			for (const key of this.validCells) {
+				const [gx, gy] = key.split(',').map(Number);
+				if (gx < x0 || gx > x1 || gy < y0 || gy > y1) continue;
+				ctx.fillRect(gx * CELL - CELL / 2, gy * CELL - CELL / 2, CELL, CELL);
+			}
+		}
+
+		// Grid lines — only draw inside valid range
 		ctx.beginPath();
-		ctx.strokeStyle = 'rgba(255,255,255,0.07)';
+		ctx.strokeStyle = 'rgba(255,255,255,0.12)';
 		ctx.lineWidth   = 1 / this.camera.zoom;
 		for (let gx = x0; gx <= x1; gx++) {
 			ctx.moveTo(gx * CELL, y0 * CELL);
@@ -238,14 +342,6 @@ class BuildSystem {
 			ctx.moveTo(x0 * CELL, gy * CELL);
 			ctx.lineTo(x1 * CELL, gy * CELL);
 		}
-		ctx.stroke();
-
-		// highlight axes
-		ctx.beginPath();
-		ctx.strokeStyle = 'rgba(100,180,255,0.18)';
-		ctx.lineWidth   = 1.5 / this.camera.zoom;
-		ctx.moveTo(x0 * CELL, 0); ctx.lineTo(x1 * CELL, 0);
-		ctx.moveTo(0, y0 * CELL); ctx.lineTo(0, y1 * CELL);
 		ctx.stroke();
 	}
 
@@ -286,16 +382,14 @@ class BuildSystem {
 		let { gx, gy } = this.hoverCell;
 		let cx  = gx * CELL, cy = gy * CELL;
 		let key = `${gx},${gy}`;
-		let isBase    = gx === 0 && gy === 0;
-		let occupied  = this.placed.has(key);
-		let canPlace  = !isBase && !occupied;
+		let onAsteroid = !this.validCells || this.validCells.has(key);
+		let occupied   = this.placed.has(key);
+		let canPlace   = onAsteroid && !occupied;
 
-		ctx.fillStyle = canPlace
-			? 'rgba(80,255,120,0.12)'
-			: 'rgba(255,60,60,0.18)';
-		ctx.fillRect(cx - CELL / 2, cy - CELL / 2, CELL, CELL);
-		ctx.strokeStyle = canPlace ? 'rgba(80,255,120,0.4)' : 'rgba(255,80,80,0.4)';
-		ctx.lineWidth   = 1 / this.camera.zoom;
+		ctx.fillStyle   = canPlace ? 'rgba(80,255,120,0.15)' : 'rgba(255,60,60,0.18)';
+		ctx.strokeStyle = canPlace ? 'rgba(80,255,120,0.5)'  : 'rgba(255,80,80,0.4)';
+		ctx.lineWidth   = 1.5 / this.camera.zoom;
+		ctx.fillRect  (cx - CELL / 2, cy - CELL / 2, CELL, CELL);
 		ctx.strokeRect(cx - CELL / 2, cy - CELL / 2, CELL, CELL);
 
 		if (this.preview && canPlace) {
@@ -312,19 +406,11 @@ class BuildSystem {
 		let { ctx, canvas } = this;
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
 
-		// background
-		ctx.fillStyle = '#03060f';
-		ctx.fillRect(0, 0, canvas.width, canvas.height);
-
 		ctx.save();
 		this.camera.applyTransform(ctx, canvas);
 
 		this._drawGrid(ctx);
-
-		// placed objects (behind base)
 		for (let item of this.placed.values()) item.render(ctx);
-
-		this._drawBase(ctx);
 		this._drawHoverCell(ctx);
 
 		ctx.restore();
@@ -347,19 +433,32 @@ class BuildSystem {
 }
 
 // ── Entry point ───────────────────────────────────────────────────────────────
-let buildSystem = null;
+let buildSystem  = null;
+let buildContext = 'lobby'; // 'lobby' | 'game'
+let buildSectorKey = null;
 
-function startBuildMode() {
-	document.querySelector('login').style.display   = 'none';
-	document.querySelector('#build').style.display  = 'flex';
+function startBuildMode(fromGame, sectorKey, initialCam) {
+	buildContext   = fromGame ? 'game' : 'lobby';
+	buildSectorKey = sectorKey || null;
+
+	if (!fromGame) {
+		document.querySelector('login').style.display = 'none';
+	}
+	document.querySelector('#build').style.display = 'block';
+
 	let canvas = document.querySelector('#build-canvas');
-	buildSystem = new BuildSystem(canvas);
+	buildSystem = new BuildSystem(canvas, buildSectorKey, initialCam || null);
 	buildSystem.resize();
 	window.addEventListener('resize', () => buildSystem && buildSystem.resize());
 }
 
 function exitBuildMode() {
 	document.querySelector('#build').style.display = 'none';
-	document.querySelector('login').style.display  = '';
+	if (buildContext === 'lobby') {
+		document.querySelector('login').style.display = '';
+	}
 	if (buildSystem) { buildSystem.stop(); buildSystem = null; }
+	buildSectorKey = null;
+	// Tell game.js build mode is closed (flag lives there)
+	if (typeof buildModeActive !== 'undefined') buildModeActive = false;
 }

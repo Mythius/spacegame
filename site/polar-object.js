@@ -4,6 +4,8 @@ class PolarObject {
 		this.y = 0;
 		this.scale = 1;
 		this.direction = 0;
+		this.flipH = false;
+		this.flipV = false;
 		this.visible = false;
 		this._shapes = [];
 		this.loaded = false;
@@ -40,10 +42,11 @@ class PolarObject {
 	// convert a polar point {a, d} to canvas coords relative to this object
 	_toCanvas(a, d){
 		let rad = (a + this.direction) * Math.PI / 180;
-		return {
-			x: this.x + Math.cos(rad) * d * this.scale,
-			y: this.y + Math.sin(rad) * d * this.scale
-		};
+		let lx = Math.cos(rad) * d * this.scale;
+		let ly = Math.sin(rad) * d * this.scale;
+		if (this.flipH) lx = -lx;
+		if (this.flipV) ly = -ly;
+		return { x: this.x + lx, y: this.y + ly };
 	}
 
 	show(){ this.visible = true; }
