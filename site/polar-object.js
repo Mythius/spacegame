@@ -6,6 +6,7 @@ class PolarObject {
 		this.direction = 0;
 		this.flipH = false;
 		this.flipV = false;
+		this.lineWidth = 2;
 		this.visible = false;
 		this._shapes = [];
 		this.loaded = false;
@@ -60,7 +61,7 @@ class PolarObject {
 				if(!seg.points || seg.points.length === 0) continue;
 				ctx.beginPath();
 				ctx.strokeStyle = seg.color || '#ffffff';
-				ctx.lineWidth = 2;
+				ctx.lineWidth = this.lineWidth;
 				let first = this._toCanvas(seg.points[0].a, seg.points[0].d);
 				ctx.moveTo(first.x, first.y);
 				for(let j = 1; j < seg.points.length; j++){

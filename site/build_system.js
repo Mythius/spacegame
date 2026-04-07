@@ -1,59 +1,58 @@
-// ── Constants ─────────────────────────────────────────────────────────────────
-const CELL           = 80;   // world units between grid snap points
-const CELL_SIZES     = [1, 2, 4, 8, 16];  // snap sizes in grid cells
-const BASE_CELL_SCALE = CELL / 16;        // scale so 1 cell ≈ asset diameter
-const PAN_SPEED  = 5;    // world units per frame (divided by zoom)
-const ZOOM_MIN   = 0.25;
-const ZOOM_MAX   = 4;
-const INIT_ZOOM  = 1.5;
+// ── Constants ──────────────────────────────────────────────────────────────────
+const CELL           = 80;
+const BASE_CELL_SCALE = CELL / 16;   // scale so asset fits 1 cell ≈ asset diameter
+const PAN_SPEED      = 5;
+const ZOOM_MIN       = 0.25;
+const ZOOM_MAX       = 4;
+const INIT_ZOOM      = 1;
 
 // ── Camera ────────────────────────────────────────────────────────────────────
 class Camera {
-	constructor() {
-		this.x    = 0;
-		this.y    = 0;
-		this.zoom = INIT_ZOOM;
-	}
+	constructor() { this.x = 0; this.y = 0; this.zoom = INIT_ZOOM; }
+
 	applyTransform(ctx, canvas) {
 		ctx.translate(canvas.width / 2, canvas.height / 2);
 		ctx.scale(this.zoom, this.zoom);
 		ctx.translate(-this.x, -this.y);
 	}
+
 	screenToWorld(sx, sy, canvas) {
 		return {
 			x: this.x + (sx - canvas.width  / 2) / this.zoom,
-			y: this.y + (sy - canvas.height / 2) / this.zoom
+			y: this.y + (sy - canvas.height / 2) / this.zoom,
 		};
 	}
-	pan(dx, dy) {
-		this.x += dx;
-		this.y += dy;
-	}
+
+	pan(dx, dy) { this.x += dx; this.y += dy; }
+
 	zoomAt(delta, sx, sy, canvas) {
-		let before = this.screenToWorld(sx, sy, canvas);
-		this.zoom  = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.zoom * (1 + delta)));
-		let after  = this.screenToWorld(sx, sy, canvas);
-		this.x    += before.x - after.x;
-		this.y    += before.y - after.y;
+		const before = this.screenToWorld(sx, sy, canvas);
+		this.zoom    = Math.max(ZOOM_MIN, Math.min(ZOOM_MAX, this.zoom * (1 + delta)));
+		const after  = this.screenToWorld(sx, sy, canvas);
+		this.x      += before.x - after.x;
+		this.y      += before.y - after.y;
 	}
 }
 
-// ── PlacedObject ──────────────────────────────────────────────────────────────
-class PlacedObject {
-	constructor(assetName, gx, gy, scale, rotation = 0, flipH = false, flipV = false) {
-		this.assetName = assetName;
-		this.gx = gx;
-		this.gy = gy;
-		this.polar = new PolarObject(`/assets/${assetName}`);
-		this.polar.scale = scale;
-		this.polar.direction = rotation;
-		this.polar.flipH = flipH;
-		this.polar.flipV = flipV;
-		this.polar.onload = () => this.polar.show();
+// ── PlacedBuilding ────────────────────────────────────────────────────────────
+class PlacedBuilding {
+	constructor(buildingId, originGx, originGy, building) {
+		this.buildingId = buildingId;
+		this.originGx   = originGx;
+		this.originGy   = originGy;
+		this.gridW      = building.gridW;
+		this.gridH      = building.gridH;
+
+		const scale = Math.max(building.gridW, building.gridH) * BASE_CELL_SCALE;
+		this.polar           = new PolarObject(`/assets/${building.asset}`);
+		this.polar.scale     = scale;
+		this.polar.lineWidth = building.lineWidth || 2;
+		this.polar.onload    = () => this.polar.show();
 	}
+
 	render(ctx) {
-		this.polar.x = this.gx * CELL;
-		this.polar.y = this.gy * CELL;
+		this.polar.x = (this.originGx + this.gridW / 2) * CELL;
+		this.polar.y = (this.originGy + this.gridH / 2) * CELL;
 		this.polar.render(ctx);
 	}
 }
@@ -61,116 +60,151 @@ class PlacedObject {
 // ── BuildSystem ───────────────────────────────────────────────────────────────
 class BuildSystem {
 	constructor(canvas, sectorKey, initialCam) {
-		this.canvas      = canvas;
-		this.ctx         = canvas.getContext('2d');
-		this.camera      = new Camera();
-		this.placed      = new Map();   // "gx,gy" → PlacedObject
-		this.sectorKey   = sectorKey || null;
-		this.validCells  = null;        // Set of "gx,gy" that sit on the asteroid
-		this.assets      = [];
-		this.selectedAsset = null;
-		this.sizeIndex   = 1;
-		this.snapMode    = 'corner';
-		this.rotation    = 0;
-		this.flipH       = false;
-		this.flipV       = false;
-		this.preview     = null;
-		this.hoverCell   = { gx: 0, gy: 0 };
-		this.mouseScreen = { x: 0, y: 0 };
-		this.keys        = {};
-		this.active      = true;
+		this.canvas    = canvas;
+		this.ctx       = canvas.getContext('2d');
+		this.camera    = new Camera();
+		this.sectorKey = sectorKey || null;
 
-		// Sync camera to game view when launched in-game
+		// placed:    origin-key → PlacedBuilding
+		// occupancy: any-cell-key → origin-key  (fast collision lookup)
+		this.placed    = new Map();
+		this.occupancy = new Map();
+
+		this.selectedBuildingId = null;
+		this.preview            = null;
+		this.hoverCell          = { gx: 0, gy: 0 };
+		this.mouseScreen        = { x: 0, y: 0 };
+		this.keys               = {};
+		this.active             = true;
+		this.interactive        = false;   // set true by setInteractive() in startBuildMode
+		this.validCells         = null;
+
 		if (initialCam) {
 			this.camera.x    = initialCam.x;
 			this.camera.y    = initialCam.y;
 			this.camera.zoom = initialCam.zoom || 1;
 		}
 
-		// Compute which grid cells fall on the asteroid polygon
+		this._sector = null;
 		if (sectorKey && typeof buildSector !== 'undefined') {
-			const _C = (window.Shared && window.Shared.CONSTANTS) || { SECTOR_SIZE: 6000, SECTOR_GRID_W: 8, SECTOR_GRID_H: 8 };
+			const _C = (window.Shared && window.Shared.CONSTANTS) ||
+			           { SECTOR_SIZE: 6000, SECTOR_GRID_W: 8, SECTOR_GRID_H: 8 };
 			const [gx, gy] = sectorKey.split('_').map(Number);
-			const sec = buildSector(gx, gy, _C);
-			this.validCells = this._computeValidCells(sec);
+			this._sector    = buildSector(gx, gy, _C);
+			this.validCells = this._computeValidCells(this._sector);
 		}
 
 		this._bindEvents();
-		this._loadAssets();
+		this._buildPalette();
 		this._loop();
 	}
 
-	_loadAssets() {
-		fetch('/asset-list')
-			.then(r => r.json())
-			.then(({ files }) => {
-				this.assets = (files || []).filter(f => f.endsWith('.json'));
-				this._buildPalette();
-			});
-	}
+	// ── Asteroid rendering ───────────────────────────────────────────────────
 
-	_buildPalette() {
-		let palette = document.querySelector('#build-palette');
-		palette.innerHTML = '';
-		for (let name of this.assets) {
-			let btn = document.createElement('button');
-			btn.className = 'palette-btn';
-			btn.textContent = name.replace('.json', '');
-			btn.dataset.name = name;
-			btn.addEventListener('click', () => this.selectAsset(name));
-			palette.appendChild(btn);
+	_drawAsteroid(ctx) {
+		const s = this._sector;
+		if (!s) return;
+
+		// Asteroid polygon verts are stored as { a, r } polar, centered at (cx,cy)
+		// in world coords. In build-mode canvas (0,0) = asteroid center.
+		const toLocal = p => ({ x: Math.cos(p.a) * p.r, y: Math.sin(p.a) * p.r });
+		const verts = s.asteroidPts.map(toLocal);
+
+		// ── Body fill ────────────────────────────────────────────────────────
+		ctx.beginPath();
+		ctx.moveTo(verts[0].x, verts[0].y);
+		for (let i = 1; i < verts.length; i++) ctx.lineTo(verts[i].x, verts[i].y);
+		ctx.closePath();
+		ctx.fillStyle   = '#1a1410';
+		ctx.fill();
+		ctx.strokeStyle = '#3a2e22';
+		ctx.lineWidth   = 3;
+		ctx.stroke();
+
+		// ── Facets ───────────────────────────────────────────────────────────
+		ctx.strokeStyle = '#2a2018';
+		ctx.lineWidth   = 1.5;
+		for (const f of s.facets) {
+			// facet origin is in absolute world coords → subtract asteroid center
+			const ox = f.ox - s.cx, oy = f.oy - s.cy;
+			ctx.beginPath();
+			const last = f.pts[f.pts.length - 1];
+			ctx.moveTo(ox + Math.cos(last.a) * last.r, oy + Math.sin(last.a) * last.r);
+			for (const pt of f.pts)
+				ctx.lineTo(ox + Math.cos(pt.a) * pt.r, oy + Math.sin(pt.a) * pt.r);
+			ctx.closePath();
+			ctx.stroke();
+		}
+
+		// ── Craters ──────────────────────────────────────────────────────────
+		ctx.strokeStyle = '#2e2416';
+		ctx.lineWidth   = 1.5;
+		for (const c of s.craters) {
+			const cx = c.x - s.cx, cy = c.y - s.cy;
+			ctx.beginPath();
+			for (let i = 0; i <= c.n; i++) {
+				const a   = c.rot + (i / c.n) * Math.PI * 2;
+				const r   = c.r * (i % 2 === 0 ? 1 : 0.7);
+				const x   = cx + Math.cos(a) * r;
+				const y   = cy + Math.sin(a) * r;
+				i === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+			}
+			ctx.closePath();
+			ctx.stroke();
+			// Inner ring
+			ctx.beginPath();
+			ctx.arc(cx, cy, c.r * 0.35, 0, Math.PI * 2);
+			ctx.strokeStyle = '#201c14';
+			ctx.stroke();
+			ctx.strokeStyle = '#2e2416';
+		}
+
+		// ── Ore deposits (snapped to grid cell centers) ───────────────────
+		for (const ore of s.ores) {
+			// Snap to nearest cell center: floor(coord/CELL)*CELL + CELL/2
+			const ox = Math.floor((ore.x - s.cx) / CELL) * CELL + CELL / 2;
+			const oy = Math.floor((ore.y - s.cy) / CELL) * CELL + CELL / 2;
+
+			// Glow
+			const grad = ctx.createRadialGradient(ox, oy, 0, ox, oy, 60);
+			grad.addColorStop(0, ore.color + '55');
+			grad.addColorStop(1, ore.color + '00');
+			ctx.fillStyle = grad;
+			ctx.beginPath();
+			ctx.arc(ox, oy, 60, 0, Math.PI * 2);
+			ctx.fill();
+
+			// Core cluster (3 small circles)
+			for (let i = 0; i < 3; i++) {
+				const a = (i / 3) * Math.PI * 2;
+				const dx = Math.cos(a) * 14, dy = Math.sin(a) * 14;
+				ctx.beginPath();
+				ctx.arc(ox + dx, oy + dy, 10, 0, Math.PI * 2);
+				ctx.fillStyle   = ore.color + 'cc';
+				ctx.strokeStyle = ore.tip;
+				ctx.lineWidth   = 1;
+				ctx.fill();
+				ctx.stroke();
+			}
+			// Center dot
+			ctx.beginPath();
+			ctx.arc(ox, oy, 6, 0, Math.PI * 2);
+			ctx.fillStyle = ore.tip;
+			ctx.fill();
+
+			// Label (only in active build mode)
+			if (this.interactive) {
+				ctx.fillStyle    = ore.tip + 'cc';
+				ctx.font         = '10px monospace';
+				ctx.textAlign    = 'center';
+				ctx.textBaseline = 'top';
+				ctx.fillText(ore.type, ox, oy + 20);
+			}
 		}
 	}
 
-	selectAsset(name) {
-		this.selectedAsset = name;
-		document.querySelectorAll('.palette-btn').forEach(b =>
-			b.classList.toggle('selected', b.dataset.name === name)
-		);
-		this.preview = new PolarObject(`/assets/${name}`);
-		this.preview.scale = this._placementScale();
-		this.preview.direction = this.rotation;
-		this.preview.flipH = this.flipH;
-		this.preview.flipV = this.flipV;
-		this.preview.onload = () => this.preview.show();
-	}
+	// ── Valid-cell helpers ────────────────────────────────────────────────────
 
-	_placementScale() {
-		return CELL_SIZES[this.sizeIndex] * BASE_CELL_SCALE;
-	}
-
-	_updateSizeLabel() {
-		let el = document.querySelector('#build-size-label');
-		if (el) el.textContent = `Size: ${CELL_SIZES[this.sizeIndex]} cell${CELL_SIZES[this.sizeIndex] > 1 ? 's' : ''}`;
-	}
-
-	_updateSnapLabel() {
-		let el = document.querySelector('#build-snap-label');
-		if (el) el.textContent = `Snap: ${this.snapMode}s`;
-	}
-
-	_updateRotationLabel() {
-		let el = document.querySelector('#build-rotation-label');
-		if (el) el.textContent = `Rotation: ${this.rotation}°`;
-	}
-
-	_updateFlipLabel() {
-		let el = document.querySelector('#build-flip-label');
-		if (!el) return;
-		let tag = (!this.flipH && !this.flipV) ? '—'
-		        : (this.flipH && this.flipV)    ? 'H+V'
-		        : this.flipH                    ? 'H'
-		        :                                 'V';
-		el.textContent = `Flip: ${tag}`;
-	}
-
-	_applyFlipToPreview() {
-		if (!this.preview) return;
-		this.preview.flipH = this.flipH;
-		this.preview.flipV = this.flipV;
-	}
-
-	// ── Valid cell computation ────────────────────────────────────────────────
 	_pointInPoly(px, py, verts) {
 		let inside = false;
 		for (let i = 0, j = verts.length - 1; i < verts.length; j = i++) {
@@ -189,234 +223,271 @@ class BuildSystem {
 		}));
 		const cells = new Set();
 		const r = Math.ceil(baseR / CELL) + 1;
-		for (let gy = -r; gy <= r; gy++) {
-			for (let gx = -r; gx <= r; gx++) {
-				if (this._pointInPoly(gx * CELL, gy * CELL, verts))
-					cells.add(`${gx},${gy}`);
-			}
-		}
+		for (let cy = -r; cy <= r; cy++)
+			for (let cx = -r; cx <= r; cx++)
+				// Test cell center (+ CELL/2) so cells touching the edge aren't falsely included
+			if (this._pointInPoly((cx + 0.5) * CELL, (cy + 0.5) * CELL, verts))
+					cells.add(`${cx},${cy}`);
 		return cells;
 	}
 
-	deselect() {
-		this.selectedAsset = null;
-		this.preview = null;
-		document.querySelectorAll('.palette-btn').forEach(b => b.classList.remove('selected'));
+	_canPlace(gx, gy, gridW, gridH) {
+		for (let dy = 0; dy < gridH; dy++)
+			for (let dx = 0; dx < gridW; dx++) {
+				const key = `${gx + dx},${gy + dy}`;
+				if (this.validCells && !this.validCells.has(key)) return false;
+				if (this.occupancy.has(key)) return false;
+			}
+		return true;
 	}
+
+	// ── Palette ───────────────────────────────────────────────────────────────
+
+	_buildPalette() {
+		const palette = document.querySelector('#build-palette');
+		if (!palette) return;
+		palette.innerHTML = '';
+
+		const reg = (typeof BUILDING_REGISTRY !== 'undefined') ? BUILDING_REGISTRY : {};
+
+		for (const [id, bld] of Object.entries(reg)) {
+			const card = document.createElement('div');
+			card.className  = 'building-card';
+			card.dataset.id = id;
+
+			const costHtml = Object.entries(bld.cost || {})
+				.map(([t, v]) => `<span class="bcard-res">${v} ${t}</span>`)
+				.join('');
+
+			card.innerHTML = `
+				<div class="bcard-name">${bld.name}</div>
+				<div class="bcard-meta">${bld.gridW}×${bld.gridH} &nbsp;·&nbsp; ${bld.hp} HP</div>
+				<div class="bcard-cost">${costHtml || '<span class="bcard-res">free</span>'}</div>
+				${bld.description ? `<div class="bcard-desc">${bld.description}</div>` : ''}
+			`;
+			card.addEventListener('click', () => this.selectBuilding(id));
+			palette.appendChild(card);
+		}
+	}
+
+	selectBuilding(id) {
+		const reg = (typeof BUILDING_REGISTRY !== 'undefined') ? BUILDING_REGISTRY : {};
+		const bld = reg[id];
+		if (!bld) return;
+
+		this.selectedBuildingId = id;
+		document.querySelectorAll('.building-card').forEach(c =>
+			c.classList.toggle('selected', c.dataset.id === id)
+		);
+
+		const scale = Math.max(bld.gridW, bld.gridH) * BASE_CELL_SCALE;
+		this.preview           = new PolarObject(`/assets/${bld.asset}`);
+		this.preview.scale     = scale;
+		this.preview.lineWidth = bld.lineWidth || 2;
+		this.preview.onload    = () => this.preview.show();
+	}
+
+	deselect() {
+		this.selectedBuildingId = null;
+		this.preview = null;
+		document.querySelectorAll('.building-card').forEach(c => c.classList.remove('selected'));
+	}
+
+	// ── Events ────────────────────────────────────────────────────────────────
 
 	_bindEvents() {
 		document.addEventListener('keydown', e => {
 			if (!this.active) return;
 			this.keys[e.key.toLowerCase()] = true;
 			if (e.key === 'Escape') this.deselect();
-			if (e.key.toLowerCase() === 'r') {
-				this.rotation = (this.rotation + 45) % 360;
-				if (this.preview) this.preview.direction = this.rotation;
-				this._updateRotationLabel();
-			}
-			if (e.key === 'f') {
-				this.flipH = !this.flipH;
-				this._applyFlipToPreview();
-				this._updateFlipLabel();
-			}
-			if (e.key === 'F') {
-				this.flipV = !this.flipV;
-				this._applyFlipToPreview();
-				this._updateFlipLabel();
-			}
-			if (e.key === 'Tab') {
-				e.preventDefault();
-				this.snapMode = this.snapMode === 'corner' ? 'center' : 'corner';
-				this._updateSnapLabel();
-			}
 		});
 		document.addEventListener('keyup', e => {
 			this.keys[e.key.toLowerCase()] = false;
 		});
 
 		this.canvas.addEventListener('mousemove', e => {
-			let r = this.canvas.getBoundingClientRect();
+			const r = this.canvas.getBoundingClientRect();
 			this.mouseScreen = { x: e.clientX - r.left, y: e.clientY - r.top };
-			let w = this.camera.screenToWorld(this.mouseScreen.x, this.mouseScreen.y, this.canvas);
-			if (this.snapMode === 'center') {
-				this.hoverCell = {
-					gx: Math.floor(w.x / CELL) + 0.5,
-					gy: Math.floor(w.y / CELL) + 0.5
-				};
-			} else {
-				this.hoverCell = {
-					gx: Math.round(w.x / CELL),
-					gy: Math.round(w.y / CELL)
-				};
-			}
+			const w = this.camera.screenToWorld(this.mouseScreen.x, this.mouseScreen.y, this.canvas);
+			this.hoverCell = {
+				gx: Math.floor(w.x / CELL),
+				gy: Math.floor(w.y / CELL),
+			};
 		});
 
 		this.canvas.addEventListener('click', () => {
-			if (!this.selectedAsset) return;
-			let { gx, gy } = this.hoverCell;
-			let key = `${gx},${gy}`;
-			if (this.validCells && !this.validCells.has(key)) return;
-			if (!this.placed.has(key)) {
-				const scale    = this._placementScale();
-				const rotation = this.rotation;
-				const flipH    = this.flipH;
-				const flipV    = this.flipV;
-				this.placed.set(key, new PlacedObject(this.selectedAsset, gx, gy, scale, rotation, flipH, flipV));
-				if (this.sectorKey && typeof socket !== 'undefined') {
-					socket.emit('base:place', {
-						sectorKey: this.sectorKey, gx, gy,
-						assetName: this.selectedAsset, scale, rotation, flipH, flipV,
-					});
-				}
+			if (!this.interactive || !this.selectedBuildingId) return;
+			const reg = (typeof BUILDING_REGISTRY !== 'undefined') ? BUILDING_REGISTRY : {};
+			const bld = reg[this.selectedBuildingId];
+			if (!bld) return;
+
+			const { gx, gy } = this.hoverCell;
+			if (!this._canPlace(gx, gy, bld.gridW, bld.gridH)) return;
+
+			const originKey = `${gx},${gy}`;
+			const obj = new PlacedBuilding(this.selectedBuildingId, gx, gy, bld);
+			this.placed.set(originKey, obj);
+			for (let dy = 0; dy < bld.gridH; dy++)
+				for (let dx = 0; dx < bld.gridW; dx++)
+					this.occupancy.set(`${gx + dx},${gy + dy}`, originKey);
+
+			if (this.sectorKey && typeof socket !== 'undefined') {
+				socket.emit('base:place', {
+					sectorKey:  this.sectorKey,
+					gx, gy,
+					assetName:  bld.asset,
+					scale:      Math.max(bld.gridW, bld.gridH) * BASE_CELL_SCALE,
+					rotation:   0,
+					buildingId: this.selectedBuildingId,
+				});
 			}
 		});
 
 		this.canvas.addEventListener('contextmenu', e => {
 			e.preventDefault();
-			let { gx, gy } = this.hoverCell;
-			const key = `${gx},${gy}`;
-			if (this.placed.has(key)) {
-				this.placed.delete(key);
-				if (this.sectorKey && typeof socket !== 'undefined') {
-					socket.emit('base:remove', { sectorKey: this.sectorKey, gx, gy });
-				}
+			if (!this.interactive) return;
+			const cellKey   = `${this.hoverCell.gx},${this.hoverCell.gy}`;
+			const originKey = this.occupancy.get(cellKey);
+			if (!originKey) return;
+
+			const obj = this.placed.get(originKey);
+			if (!obj) return;
+
+			for (let dy = 0; dy < obj.gridH; dy++)
+				for (let dx = 0; dx < obj.gridW; dx++)
+					this.occupancy.delete(`${obj.originGx + dx},${obj.originGy + dy}`);
+			this.placed.delete(originKey);
+
+			if (this.sectorKey && typeof socket !== 'undefined') {
+				socket.emit('base:remove', {
+					sectorKey: this.sectorKey,
+					gx: obj.originGx, gy: obj.originGy,
+				});
 			}
 		});
 
 		this.canvas.addEventListener('wheel', e => {
 			e.preventDefault();
-			if (e.ctrlKey) {
-				// Ctrl+Scroll: cycle placement size
-				this.sizeIndex = Math.max(0, Math.min(CELL_SIZES.length - 1,
-					this.sizeIndex + (e.deltaY > 0 ? -1 : 1)
-				));
-				// update preview scale
-				if (this.preview) this.preview.scale = this._placementScale();
-				this._updateSizeLabel();
-			} else {
-				this.camera.zoomAt(
-					e.deltaY > 0 ? -0.1 : 0.1,
-					this.mouseScreen.x, this.mouseScreen.y,
-					this.canvas
-				);
-			}
+			if (!this.interactive) return;
+			this.camera.zoomAt(
+				e.deltaY > 0 ? -0.1 : 0.1,
+				this.mouseScreen.x, this.mouseScreen.y, this.canvas
+			);
 		}, { passive: false });
 	}
 
+	// ── Update / Render ───────────────────────────────────────────────────────
+
 	_update() {
-		if (!this.active) return;
-		let spd = PAN_SPEED / this.camera.zoom;
+		if (!this.interactive) return;
+		const spd = PAN_SPEED / this.camera.zoom;
 		if (this.keys['w'] || this.keys['arrowup'])    this.camera.pan(0, -spd);
 		if (this.keys['s'] || this.keys['arrowdown'])  this.camera.pan(0,  spd);
 		if (this.keys['a'] || this.keys['arrowleft'])  this.camera.pan(-spd, 0);
 		if (this.keys['d'] || this.keys['arrowright']) this.camera.pan( spd, 0);
 	}
 
-	_drawGrid(ctx) {
-		let tl = this.camera.screenToWorld(0, 0, this.canvas);
-		let br = this.camera.screenToWorld(this.canvas.width, this.canvas.height, this.canvas);
-		let x0 = Math.floor(tl.x / CELL) - 1;
-		let y0 = Math.floor(tl.y / CELL) - 1;
-		let x1 = Math.ceil(br.x  / CELL) + 1;
-		let y1 = Math.ceil(br.y  / CELL) + 1;
+	setInteractive(on) {
+		this.interactive              = on;
+		this.canvas.style.pointerEvents = on ? '' : 'none';
+		if (!on) this.deselect();
+	}
 
-		// Shade valid (on-asteroid) cells
+	_drawGrid(ctx) {
+		const tl = this.camera.screenToWorld(0, 0, this.canvas);
+		const br = this.camera.screenToWorld(this.canvas.width, this.canvas.height, this.canvas);
+		const x0 = Math.floor(tl.x / CELL) - 1, y0 = Math.floor(tl.y / CELL) - 1;
+		const x1 = Math.ceil (br.x / CELL) + 1, y1 = Math.ceil (br.y / CELL) + 1;
+
+		// Tint valid (on-asteroid) cells
 		if (this.validCells) {
 			ctx.fillStyle = 'rgba(80,160,100,0.10)';
 			for (const key of this.validCells) {
-				const [gx, gy] = key.split(',').map(Number);
-				if (gx < x0 || gx > x1 || gy < y0 || gy > y1) continue;
-				ctx.fillRect(gx * CELL - CELL / 2, gy * CELL - CELL / 2, CELL, CELL);
+				const [cx, cy] = key.split(',').map(Number);
+				if (cx < x0 || cx > x1 || cy < y0 || cy > y1) continue;
+				ctx.fillRect(cx * CELL, cy * CELL, CELL, CELL);
 			}
 		}
 
-		// Grid lines — only draw inside valid range
+		// Grid lines
 		ctx.beginPath();
-		ctx.strokeStyle = 'rgba(255,255,255,0.12)';
+		ctx.strokeStyle = 'rgba(255,255,255,0.13)';
 		ctx.lineWidth   = 1 / this.camera.zoom;
 		for (let gx = x0; gx <= x1; gx++) {
-			ctx.moveTo(gx * CELL, y0 * CELL);
-			ctx.lineTo(gx * CELL, y1 * CELL);
+			ctx.moveTo(gx * CELL, y0 * CELL); ctx.lineTo(gx * CELL, y1 * CELL);
 		}
 		for (let gy = y0; gy <= y1; gy++) {
-			ctx.moveTo(x0 * CELL, gy * CELL);
-			ctx.lineTo(x1 * CELL, gy * CELL);
+			ctx.moveTo(x0 * CELL, gy * CELL); ctx.lineTo(x1 * CELL, gy * CELL);
 		}
 		ctx.stroke();
-	}
-
-	_drawBase(ctx) {
-		let lw = 2 / this.camera.zoom;
-		let s  = CELL * 0.42;
-
-		// outer ring
-		ctx.beginPath();
-		ctx.strokeStyle = '#4af';
-		ctx.lineWidth   = lw;
-		ctx.arc(0, 0, s, 0, Math.PI * 2);
-		ctx.stroke();
-
-		// cross
-		ctx.beginPath();
-		ctx.strokeStyle = '#4af';
-		ctx.lineWidth   = lw;
-		ctx.moveTo(-s, 0); ctx.lineTo(s, 0);
-		ctx.moveTo(0, -s); ctx.lineTo(0, s);
-		ctx.stroke();
-
-		// center dot
-		ctx.beginPath();
-		ctx.fillStyle = '#7cf';
-		ctx.arc(0, 0, 5 / this.camera.zoom, 0, Math.PI * 2);
-		ctx.fill();
-
-		// label
-		ctx.fillStyle   = 'rgba(100,200,255,0.6)';
-		ctx.font        = `${11 / this.camera.zoom}px monospace`;
-		ctx.textAlign   = 'center';
-		ctx.fillText('BASE', 0, s + 14 / this.camera.zoom);
 	}
 
 	_drawHoverCell(ctx) {
-		if (!this.selectedAsset) return;
-		let { gx, gy } = this.hoverCell;
-		let cx  = gx * CELL, cy = gy * CELL;
-		let key = `${gx},${gy}`;
-		let onAsteroid = !this.validCells || this.validCells.has(key);
-		let occupied   = this.placed.has(key);
-		let canPlace   = onAsteroid && !occupied;
+		if (!this.selectedBuildingId) return;
+		const reg = (typeof BUILDING_REGISTRY !== 'undefined') ? BUILDING_REGISTRY : {};
+		const bld = reg[this.selectedBuildingId];
+		if (!bld) return;
 
-		ctx.fillStyle   = canPlace ? 'rgba(80,255,120,0.15)' : 'rgba(255,60,60,0.18)';
-		ctx.strokeStyle = canPlace ? 'rgba(80,255,120,0.5)'  : 'rgba(255,80,80,0.4)';
+		const { gx, gy } = this.hoverCell;
+		const canPlace   = this._canPlace(gx, gy, bld.gridW, bld.gridH);
+		const x0 = gx * CELL, y0 = gy * CELL;
+		const w  = bld.gridW * CELL, h  = bld.gridH * CELL;
+
+		ctx.fillStyle   = canPlace ? 'rgba(80,255,120,0.15)' : 'rgba(255,60,60,0.15)';
+		ctx.strokeStyle = canPlace ? 'rgba(80,255,120,0.6)'  : 'rgba(255,80,80,0.5)';
 		ctx.lineWidth   = 1.5 / this.camera.zoom;
-		ctx.fillRect  (cx - CELL / 2, cy - CELL / 2, CELL, CELL);
-		ctx.strokeRect(cx - CELL / 2, cy - CELL / 2, CELL, CELL);
+		ctx.fillRect(x0, y0, w, h);
+		ctx.strokeRect(x0, y0, w, h);
 
 		if (this.preview && canPlace) {
 			ctx.save();
-			ctx.globalAlpha = 0.45;
-			this.preview.x = cx;
-			this.preview.y = cy;
+			ctx.globalAlpha = 0.5;
+			this.preview.x = (gx + bld.gridW / 2) * CELL;
+			this.preview.y = (gy + bld.gridH / 2) * CELL;
 			this.preview.render(ctx);
 			ctx.restore();
 		}
 	}
 
 	_render() {
-		let { ctx, canvas } = this;
+		const { ctx, canvas } = this;
 		ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+		// Background + stars in standalone mode (not overlaid on combat)
+		if (this._sector) {
+			ctx.fillStyle = '#02040a';
+			ctx.fillRect(0, 0, canvas.width, canvas.height);
+			this._drawStars(ctx);
+		}
 
 		ctx.save();
 		this.camera.applyTransform(ctx, canvas);
-
-		this._drawGrid(ctx);
-		for (let item of this.placed.values()) item.render(ctx);
-		this._drawHoverCell(ctx);
-
+		this._drawAsteroid(ctx);
+		if (this.interactive) this._drawGrid(ctx);
+		for (const obj of this.placed.values()) obj.render(ctx);
+		if (this.interactive) this._drawHoverCell(ctx);
 		ctx.restore();
 	}
 
+	_drawStars(ctx) {
+		if (!this._stars) {
+			// Generate a stable set of stars in screen space (not world space)
+			const rand = seededRand ? seededRand(0xdeadbeef) : Math.random.bind(Math);
+			this._stars = Array.from({ length: 120 }, () => ({
+				sx: rand(), sy: rand(), r: rand() * 1.2 + 0.3, a: rand() * 0.6 + 0.2,
+			}));
+		}
+		const { width, height } = ctx.canvas;
+		for (const s of this._stars) {
+			ctx.beginPath();
+			ctx.arc(s.sx * width, s.sy * height, s.r, 0, Math.PI * 2);
+			ctx.fillStyle = `rgba(200,215,255,${s.a})`;
+			ctx.fill();
+		}
+	}
+
 	_loop() {
+		if (!this.active) return;
 		this._update();
 		this._render();
 		requestAnimationFrame(() => this._loop());
@@ -427,38 +498,59 @@ class BuildSystem {
 		this.canvas.height = window.innerHeight;
 	}
 
-	stop() {
-		this.active = false;
-	}
+	stop() { this.active = false; }
 }
 
-// ── Entry point ───────────────────────────────────────────────────────────────
-let buildSystem  = null;
-let buildContext = 'lobby'; // 'lobby' | 'game'
+// ── Entry points ──────────────────────────────────────────────────────────────
+let buildSystem    = null;
+let buildContext   = 'lobby';
 let buildSectorKey = null;
 
 function startBuildMode(fromGame, sectorKey, initialCam) {
 	buildContext   = fromGame ? 'game' : 'lobby';
 	buildSectorKey = sectorKey || null;
 
-	if (!fromGame) {
-		document.querySelector('login').style.display = 'none';
-	}
-	document.querySelector('#build').style.display = 'block';
+	// Raise build canvas above login/lobby/game
+	document.querySelector('#build').style.zIndex = '999';
+	document.querySelector('#build-ui').style.display = 'flex';
 
-	let canvas = document.querySelector('#build-canvas');
+	if (!fromGame) document.querySelector('login').style.display = 'none';
+
+	if (buildSystem && buildSystem.sectorKey === buildSectorKey) {
+		// Re-entering same sector — just re-enable interaction
+		buildSystem.setInteractive(true);
+		return;
+	}
+
+	// First entry or sector change — create a fresh BuildSystem
+	if (buildSystem) buildSystem.stop();
+	const canvas = document.querySelector('#build-canvas');
 	buildSystem = new BuildSystem(canvas, buildSectorKey, initialCam || null);
 	buildSystem.resize();
+	// Call setInteractive after construction so the first loop renders correctly
+	buildSystem.setInteractive(true);
 	window.addEventListener('resize', () => buildSystem && buildSystem.resize());
 }
 
 function exitBuildMode() {
-	document.querySelector('#build').style.display = 'none';
-	if (buildContext === 'lobby') {
-		document.querySelector('login').style.display = '';
-	}
-	if (buildSystem) { buildSystem.stop(); buildSystem = null; }
+	// Drop canvas to background (behind login/lobby/game in DOM order)
+	document.querySelector('#build').style.zIndex = '';
+	document.querySelector('#build-ui').style.display = 'none';
+
+	if (buildContext === 'lobby') document.querySelector('login').style.display = '';
+	if (buildSystem) buildSystem.setInteractive(false);
+
 	buildSectorKey = null;
-	// Tell game.js build mode is closed (flag lives there)
 	if (typeof buildModeActive !== 'undefined') buildModeActive = false;
 }
+
+// ── Auto-init background render ───────────────────────────────────────────────
+// Initialise a passive BuildSystem immediately so the asteroid renders behind
+// the login/lobby screens before the player ever clicks "Build Mode".
+window.addEventListener('load', () => {
+	const canvas = document.querySelector('#build-canvas');
+	buildSystem  = new BuildSystem(canvas, '4_4', { x: 0, y: 0, zoom: 0.4 });
+	buildSystem.resize();
+	// interactive stays false — passive render only
+	window.addEventListener('resize', () => buildSystem && buildSystem.resize());
+});

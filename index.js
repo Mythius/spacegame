@@ -42,6 +42,7 @@ const { Weapon, createWeapon, WEAPON_REGISTRY, AMMO_TYPES } = Weapons;
 const { RESOURCE_TYPES, ResourceDeposit, ResourceBag }      = Resources;
 const { SolarSystem }                                        = World;
 const { buildSector }                                        = require('./shared/worldgen');
+const { BUILDING_REGISTRY }                                  = require('./shared/buildings');
 
 // ── Player saves ──────────────────────────────────────────────────────────────
 const nodePath = require('path');

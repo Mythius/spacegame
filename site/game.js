@@ -32,6 +32,19 @@ const MINE_RANGE      = 250;        // world units
 // Base placements: sectorKey → [{ gx, gy, assetName, scale, rotation }]
 const basePlacements  = new Map();
 
+// Polar object cache for building rendering: 'assetName::scale' → PolarObject
+const _polarCache = new Map();
+function _getPlacementPolar(assetName, scale) {
+  const key = `${assetName}::${scale}`;
+  if (!_polarCache.has(key)) {
+    const p = new PolarObject(`/assets/${assetName}`);
+    p.scale  = scale;
+    p.onload = () => p.show();
+    _polarCache.set(key, p);
+  }
+  return _polarCache.get(key);
+}
+
 let buildModeActive = false;
 
 const cam = { x: 0, y: 0 };
@@ -392,7 +405,7 @@ function drawOres({ ores }, ox, oy) {
 function drawBasePlacements(gx, gy, ox, oy) {
   const sectorKey = `${gx}_${gy}`;
   const list = basePlacements.get(sectorKey);
-  if (!list || list.size === 0) return;
+  if (!list || list.length === 0) return;
 
   const S  = C.SECTOR_SIZE;
   const cx = gx * S + S / 2;
@@ -402,21 +415,13 @@ function drawBasePlacements(gx, gy, ox, oy) {
   const CELL = 80;
 
   for (const b of list) {
-    const wx = cx + b.gx * CELL + ox;
-    const wy = cy + b.gy * CELL + oy;
-    // Simple colored square placeholder until polar objects load
-    ctx.save();
-    ctx.fillStyle   = 'rgba(40,160,100,0.55)';
-    ctx.strokeStyle = '#4fc';
-    ctx.lineWidth   = 1;
-    const hs = (b.scale || 1) * 20;
-    ctx.fillRect(wx - hs, wy - hs, hs * 2, hs * 2);
-    ctx.strokeRect(wx - hs, wy - hs, hs * 2, hs * 2);
-    ctx.font      = '8px monospace';
-    ctx.fillStyle = '#8fe';
-    ctx.textAlign = 'center';
-    ctx.fillText(b.assetName ? b.assetName.replace('.json','') : '?', wx, wy + 3);
-    ctx.restore();
+    const scale = b.scale || 5;
+    const polar = _getPlacementPolar(b.assetName, scale);
+    // Center of cell: asteroid origin + (col + 0.5) * CELL
+    polar.x         = cx + (b.gx + 0.5) * CELL + ox;
+    polar.y         = cy + (b.gy + 0.5) * CELL + oy;
+    polar.direction = b.rotation || 0;
+    polar.render(ctx);
   }
 }
 

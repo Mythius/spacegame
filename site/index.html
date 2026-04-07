@@ -10,11 +10,17 @@
 	<script src="/shared/worldgen.js"></script>
 	<script src="helpers.js"></script>
 	<style>
+		/* ── Stacking order ───────────────────────────────────────────── */
+		/* #build has no z-index by default → sits behind login/lobby/game
+		   (all of which are later in DOM or have explicit z-index).
+		   startBuildMode() raises it to z-index:999; exitBuildMode drops it back. */
+		game  { z-index: 1; }
+
+		/* ── Build canvas — always rendered, z-index toggled by JS ───── */
 		#build {
-			display: none;
+			display: block;
 			position: fixed;
 			inset: 0;
-			/* transparent — game canvas shows through */
 		}
 		#build-canvas {
 			position: absolute;
@@ -22,27 +28,31 @@
 			width: 100%;
 			height: 100%;
 			display: block;
+			background: transparent;
 		}
+
+		/* ── Build UI panel (floats on left, above canvas) ────────────── */
 		#build-ui {
+			display: none;   /* shown only in active build mode */
 			position: fixed;
+			z-index: 3;
 			top: 0; left: 0;
-			width: 180px;
+			width: 200px;
 			height: 100vh;
-			background: rgba(0,0,0,0.75);
-			border-right: 1px solid #222;
-			display: flex;
+			background: rgba(4,8,20,0.88);
+			border-right: 1px solid #1a2a3a;
 			flex-direction: column;
 			box-sizing: border-box;
-			padding: 12px 10px;
-			gap: 8px;
+			padding: 14px 10px 10px;
+			gap: 6px;
 			font-family: monospace;
 		}
 		#build-ui h3 {
-			margin: 0 0 4px;
-			font-size: 12px;
+			margin: 0 0 6px;
+			font-size: 11px;
 			color: #4af;
 			text-transform: uppercase;
-			letter-spacing: 1px;
+			letter-spacing: 1.5px;
 			border-bottom: 1px solid #1a3a5a;
 			padding-bottom: 6px;
 		}
@@ -51,86 +61,103 @@
 			overflow-y: auto;
 			display: flex;
 			flex-direction: column;
-			gap: 4px;
+			gap: 5px;
 		}
 		#build-palette::-webkit-scrollbar { width: 3px; }
-		#build-palette::-webkit-scrollbar-thumb { background: #333; }
-		.palette-btn {
-			width: 100%;
-			padding: 6px 8px;
-			background: #0a0a14;
-			border: 1px solid #2a2a3a;
-			color: #aaa;
-			font-family: monospace;
-			font-size: 11px;
+		#build-palette::-webkit-scrollbar-thumb { background: #2a3a4a; }
+
+		/* ── Building cards ───────────────────────────────────────────── */
+		.building-card {
+			padding: 8px 9px;
+			background: #060d1a;
+			border: 1px solid #1a2a3a;
+			color: #8aa;
 			cursor: pointer;
-			text-align: left;
-			letter-spacing: 0.5px;
+			border-radius: 3px;
+			transition: border-color .15s, background .15s;
 		}
-		.palette-btn:hover { background: #12122a; color: white; }
-		.palette-btn.selected { background: #0a1f3a; border-color: #4af; color: #7cf; }
-		#build-size-label, #build-snap-label, #build-rotation-label, #build-flip-label {
-			font-size: 11px;
-			color: #7cf;
-			padding: 2px 0;
-			letter-spacing: 0.5px;
+		.building-card:hover { background: #0a1628; border-color: #2a4a6a; }
+		.building-card.selected { background: #0a1f3a; border-color: #4af; }
+		.bcard-name {
+			font-size: 12px;
+			color: #cde;
+			font-weight: bold;
+			margin-bottom: 3px;
 		}
-		#build-hint {
+		.building-card.selected .bcard-name { color: #7cf; }
+		.bcard-meta {
 			font-size: 10px;
-			color: #444;
-			line-height: 1.6;
+			color: #567;
+			margin-bottom: 4px;
+		}
+		.bcard-cost { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 3px; }
+		.bcard-res {
+			font-size: 10px;
+			background: #0d1a0d;
+			border: 1px solid #1a3a1a;
+			color: #6a9;
+			padding: 1px 5px;
+			border-radius: 2px;
+		}
+		.bcard-desc {
+			font-size: 9px;
+			color: #456;
+			line-height: 1.4;
+			margin-top: 2px;
+		}
+
+		/* ── Hint + back button ───────────────────────────────────────── */
+		#build-hint {
+			font-size: 9px;
+			color: #334;
+			line-height: 1.7;
+			border-top: 1px solid #111a22;
+			padding-top: 6px;
 		}
 		#build-back {
 			padding: 7px;
-			background: #100a0a;
-			border: 1px solid #3a1a1a;
-			color: #a66;
+			background: #0f0a0a;
+			border: 1px solid #2a1a1a;
+			color: #966;
 			font-family: monospace;
 			font-size: 11px;
 			cursor: pointer;
+			border-radius: 3px;
 		}
 		#build-back:hover { background: #1e1010; color: #f88; }
-		#build-mode-btn {
-			margin-top: 10px;
-		}
+		#build-mode-btn { margin-top: 10px; }
 	</style>
 </head>
 <body>
+	<!-- Build canvas is FIRST in DOM so it sits behind login/lobby/game at z-index:auto.
+	     startBuildMode raises it to z-index:999; exitBuildMode drops it back. -->
+	<div id="build">
+		<canvas id="build-canvas"></canvas>
+		<div id="build-ui">
+			<h3>Buildings</h3>
+			<div id="build-palette"></div>
+			<div id="build-hint">
+				Click — place<br>
+				Right-click — remove<br>
+				WASD — pan<br>
+				Scroll — zoom<br>
+				Esc — deselect<br>
+				B — close
+			</div>
+			<button id="build-back" onclick="exitBuildMode()">← Back to game</button>
+		</div>
+	</div>
 	<login>
 		<h1>Spaceship Game</h1>
 		<input id=name placeholder="Enter your username">
 		<br>
 		<button id=start>Begin your quest</button>
-		<button id="build-mode-btn" onclick="startBuildMode()">Build Mode</button>
+		<button id="build-mode-btn" onclick="startBuildMode(false,'4_4',{x:0,y:0,zoom:0.4})">Build Mode</button>
 		<div style="margin-top:18px;border-top:1px solid #333;padding-top:14px;display:flex;gap:8px;">
 			<a href="editor.html" style="flex:1;display:block;padding:8px;background:#0a0a1a;border:1px solid #2a2a5a;color:#7af;font-family:monospace;font-size:0.7em;letter-spacing:1px;text-decoration:none;transition:background .3s;">Shape Editor</a>
 			<a href="beam_editor.html" style="flex:1;display:block;padding:8px;background:#0a1a0a;border:1px solid #2a5a2a;color:#5f8;font-family:monospace;font-size:0.7em;letter-spacing:1px;text-decoration:none;transition:background .3s;">Beam Editor</a>
 		</div>
 	</login>
-	<div id="build">
-		<canvas id="build-canvas"></canvas>
-		<div id="build-ui">
-			<h3>Assets</h3>
-			<div id="build-palette"></div>
-			<div id="build-size-label">Size: 2 cells</div>
-			<div id="build-snap-label">Snap: corners</div>
-			<div id="build-rotation-label">Rotation: 0°</div>
-			<div id="build-flip-label">Flip: —</div>
-		<div id="build-hint">
-				Click — place<br>
-				Right click — remove<br>
-				WASD — pan<br>
-				Scroll — zoom<br>
-				Ctrl+Scroll — resize<br>
-				R — rotate 45°<br>
-				F — flip horizontal<br>
-				Shift+F — flip vertical<br>
-				Tab — toggle snap<br>
-				Esc — deselect
-			</div>
-			<button id="build-back" onclick="exitBuildMode()">← Back</button>
-		</div>
-	</div>
 	<lobby>
 		<left>
 			<h2>Players</h2><hr>
@@ -144,9 +171,10 @@
 	<game>
 		<canvas id=gamecanvas style="display:block;width:100%;height:100%;background:#03050d;"></canvas>
 	</game>
+	<script src="/shared/buildings.js"></script>
+	<script src="polar-object.js"></script>
 	<script src="main.js"></script>
 	<script src="game.js"></script>
-	<script src="polar-object.js"></script>
 	<script src="build_system.js"></script>
 </body>
 </html>

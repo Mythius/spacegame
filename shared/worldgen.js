@@ -79,10 +79,12 @@
     const isHome  = (gx === Math.floor(C.SECTOR_GRID_W / 2) && gy === Math.floor(C.SECTOR_GRID_H / 2));
     const orePool = isHome ? ORE_DEFS.slice(0, 3) : ORE_DEFS;
 
+    // Build a lookup of min radius per angle slot for rejection-free placement.
+    // Ores are placed within the asteroid polygon (0.15–0.75 × baseR from center).
     const ores = [];
     for (let i = 0; i < count; i++) {
       const a   = rand() * Math.PI * 2;
-      const d   = baseR * 1.05 + 60 + rand() * 400;
+      const d   = baseR * (0.15 + rand() * 0.60);   // 0.15–0.75 × baseR, inside the body
       const def = orePool[Math.floor(rand() * orePool.length)];
       ores.push({
         id: `${gx}_${gy}_${i}`,
