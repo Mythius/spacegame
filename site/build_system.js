@@ -309,7 +309,7 @@ class BuildSystem {
 			this.keys[e.key.toLowerCase()] = true;
 			if (e.key === 'Escape') this.deselect();
 			if (e.key.toLowerCase() === 'r' && !e.repeat && this.selectedBuildingId) {
-				this.rotation = (this.rotation + 90) % 360;
+				this.rotation = (this.rotation + 45) % 360;
 				if (this.preview) this.preview.direction = this.rotation;
 			}
 		});
