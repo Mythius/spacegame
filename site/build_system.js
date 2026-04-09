@@ -36,16 +36,21 @@ class Camera {
 
 // ── PlacedBuilding ────────────────────────────────────────────────────────────
 class PlacedBuilding {
-	constructor(buildingId, originGx, originGy, building) {
+	constructor(buildingId, originGx, originGy, building, rotation = 0) {
 		this.buildingId = buildingId;
 		this.originGx   = originGx;
 		this.originGy   = originGy;
-		this.gridW      = building.gridW;
-		this.gridH      = building.gridH;
+		this.rotation   = rotation;
+
+		// At 90° or 270° the footprint is transposed
+		const swapped = (rotation === 90 || rotation === 270);
+		this.gridW    = swapped ? building.gridH : building.gridW;
+		this.gridH    = swapped ? building.gridW : building.gridH;
 
 		const scale = Math.max(building.gridW, building.gridH) * BASE_CELL_SCALE;
 		this.polar           = new PolarObject(`/assets/${building.asset}`);
 		this.polar.scale     = scale;
+		this.polar.direction = rotation;
 		this.polar.lineWidth = building.lineWidth || 2;
 		this.polar.onload    = () => this.polar.show();
 	}
@@ -75,6 +80,7 @@ class BuildSystem {
 		this.hoverCell          = { gx: 0, gy: 0 };
 		this.mouseScreen        = { x: 0, y: 0 };
 		this.keys               = {};
+		this.rotation           = 0;       // current placement rotation: 0, 90, 180, 270
 		this.active             = true;
 		this.interactive        = false;   // set true by setInteractive() in startBuildMode
 		this.validCells         = null;
@@ -280,9 +286,11 @@ class BuildSystem {
 			c.classList.toggle('selected', c.dataset.id === id)
 		);
 
+		this.rotation = 0;
 		const scale = Math.max(bld.gridW, bld.gridH) * BASE_CELL_SCALE;
 		this.preview           = new PolarObject(`/assets/${bld.asset}`);
 		this.preview.scale     = scale;
+		this.preview.direction = this.rotation;
 		this.preview.lineWidth = bld.lineWidth || 2;
 		this.preview.onload    = () => this.preview.show();
 	}
@@ -300,6 +308,10 @@ class BuildSystem {
 			if (!this.active) return;
 			this.keys[e.key.toLowerCase()] = true;
 			if (e.key === 'Escape') this.deselect();
+			if (e.key.toLowerCase() === 'r' && !e.repeat && this.selectedBuildingId) {
+				this.rotation = (this.rotation + 45) % 360;
+				if (this.preview) this.preview.direction = this.rotation;
+			}
 		});
 		document.addEventListener('keyup', e => {
 			this.keys[e.key.toLowerCase()] = false;
@@ -322,13 +334,17 @@ class BuildSystem {
 			if (!bld) return;
 
 			const { gx, gy } = this.hoverCell;
-			if (!this._canPlace(gx, gy, bld.gridW, bld.gridH)) return;
+			// Effective footprint respects rotation
+			const swapped = (this.rotation === 90 || this.rotation === 270);
+			const eW = swapped ? bld.gridH : bld.gridW;
+			const eH = swapped ? bld.gridW : bld.gridH;
+			if (!this._canPlace(gx, gy, eW, eH)) return;
 
 			const originKey = `${gx},${gy}`;
-			const obj = new PlacedBuilding(this.selectedBuildingId, gx, gy, bld);
+			const obj = new PlacedBuilding(this.selectedBuildingId, gx, gy, bld, this.rotation);
 			this.placed.set(originKey, obj);
-			for (let dy = 0; dy < bld.gridH; dy++)
-				for (let dx = 0; dx < bld.gridW; dx++)
+			for (let dy = 0; dy < eH; dy++)
+				for (let dx = 0; dx < eW; dx++)
 					this.occupancy.set(`${gx + dx},${gy + dy}`, originKey);
 
 			if (this.sectorKey && typeof socket !== 'undefined') {
@@ -337,7 +353,7 @@ class BuildSystem {
 					gx, gy,
 					assetName:  bld.asset,
 					scale:      Math.max(bld.gridW, bld.gridH) * BASE_CELL_SCALE,
-					rotation:   0,
+					rotation:   this.rotation,
 					buildingId: this.selectedBuildingId,
 				});
 			}
@@ -428,10 +444,15 @@ class BuildSystem {
 		const bld = reg[this.selectedBuildingId];
 		if (!bld) return;
 
+		// Effective footprint accounts for 90°/270° transpose
+		const swapped = (this.rotation === 90 || this.rotation === 270);
+		const eW = swapped ? bld.gridH : bld.gridW;
+		const eH = swapped ? bld.gridW : bld.gridH;
+
 		const { gx, gy } = this.hoverCell;
-		const canPlace   = this._canPlace(gx, gy, bld.gridW, bld.gridH);
+		const canPlace   = this._canPlace(gx, gy, eW, eH);
 		const x0 = gx * CELL, y0 = gy * CELL;
-		const w  = bld.gridW * CELL, h  = bld.gridH * CELL;
+		const w  = eW * CELL, h  = eH * CELL;
 
 		ctx.fillStyle   = canPlace ? 'rgba(80,255,120,0.15)' : 'rgba(255,60,60,0.15)';
 		ctx.strokeStyle = canPlace ? 'rgba(80,255,120,0.6)'  : 'rgba(255,80,80,0.5)';
@@ -442,8 +463,9 @@ class BuildSystem {
 		if (this.preview && canPlace) {
 			ctx.save();
 			ctx.globalAlpha = 0.5;
-			this.preview.x = (gx + bld.gridW / 2) * CELL;
-			this.preview.y = (gy + bld.gridH / 2) * CELL;
+			this.preview.direction = this.rotation;
+			this.preview.x = (gx + eW / 2) * CELL;
+			this.preview.y = (gy + eH / 2) * CELL;
 			this.preview.render(ctx);
 			ctx.restore();
 		}
@@ -467,6 +489,21 @@ class BuildSystem {
 		for (const obj of this.placed.values()) obj.render(ctx);
 		if (this.interactive) this._drawHoverCell(ctx);
 		ctx.restore();
+
+		// HUD: rotation hint while a building is selected
+		if (this.interactive && this.selectedBuildingId) {
+			const label = `R — Rotate  |  ${this.rotation}°`;
+			ctx.save();
+			ctx.font         = '13px monospace';
+			ctx.textAlign    = 'left';
+			ctx.textBaseline = 'middle';
+			const tw = ctx.measureText(label).width;
+			ctx.fillStyle = 'rgba(0,0,0,0.55)';
+			ctx.fillRect(10, canvas.height - 38, tw + 20, 26);
+			ctx.fillStyle = '#aaffcc';
+			ctx.fillText(label, 20, canvas.height - 25);
+			ctx.restore();
+		}
 	}
 
 	_drawStars(ctx) {
