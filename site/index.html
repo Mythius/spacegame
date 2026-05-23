@@ -8,6 +8,8 @@
 	<script src=/socket.io/socket.io.js></script>
 	<script src="/shared/constants.js"></script>
 	<script src="/shared/worldgen.js"></script>
+	<script src="/shared/components.js"></script>
+	<script src="/shared/ships.js"></script>
 	<script src="helpers.js"></script>
 	<style>
 		/* ── Stacking order ───────────────────────────────────────────── */
@@ -126,6 +128,78 @@
 		}
 		#build-back:hover { background: #1e1010; color: #f88; }
 		#build-mode-btn { margin-top: 10px; }
+
+		/* ── Ship selection (lobby) ───────────────────────────────── */
+		#ship-select {
+			padding: 16px 12px 8px;
+			text-align: left;
+		}
+		#ship-select h3 {
+			margin: 0 0 12px;
+			font-size: 11px;
+			font-family: monospace;
+			text-transform: uppercase;
+			letter-spacing: 2px;
+			color: #4af;
+			border-bottom: 1px solid #1a2a3a;
+			padding-bottom: 6px;
+		}
+		#ship-cards {
+			display: flex;
+			flex-wrap: wrap;
+			gap: 10px;
+			justify-content: center;
+		}
+		.ship-card {
+			width: 148px;
+			background: #0a0e18;
+			border: 1px solid #1a2a3a;
+			border-top: 3px solid var(--c, #334);
+			cursor: pointer;
+			padding: 8px;
+			border-radius: 3px;
+			transition: background .15s, border-color .15s;
+			font-family: monospace;
+			text-align: left;
+		}
+		.ship-card:hover  { background: #0d1625; border-color: #2a4a6a; }
+		.ship-card.sel    { background: #0a1f38; border-left-color: #4af; border-right-color: #4af; border-bottom-color: #4af; }
+		.ship-card canvas { display: block; margin: 0 auto 6px; }
+		.scard-name {
+			font-size: 13px;
+			font-weight: bold;
+			color: #cde;
+			margin-bottom: 3px;
+		}
+		.ship-card.sel .scard-name { color: #7cf; }
+		.scard-desc {
+			font-size: 9px;
+			color: #456;
+			line-height: 1.5;
+			margin-bottom: 7px;
+		}
+		.sbar-row {
+			display: flex;
+			align-items: center;
+			gap: 5px;
+			margin: 3px 0;
+		}
+		.sbar-lbl {
+			font-size: 8px;
+			color: #456;
+			width: 34px;
+			flex-shrink: 0;
+			text-transform: uppercase;
+			letter-spacing: 0.5px;
+		}
+		.sbar-track {
+			flex: 1;
+			height: 3px;
+			background: #0d1520;
+			border-radius: 2px;
+			overflow: hidden;
+		}
+		.sbar-fill { height: 100%; border-radius: 2px; }
 	</style>
 </head>
 <body>
@@ -153,7 +227,8 @@
 		<br>
 		<button id=start>Begin your quest</button>
 		<button id="build-mode-btn" onclick="startBuildMode(false,'4_4',{x:0,y:0,zoom:0.4})">Build Mode</button>
-		<div style="margin-top:18px;border-top:1px solid #333;padding-top:14px;display:flex;gap:8px;">
+		<div style="margin-top:18px;border-top:1px solid #333;padding-top:14px;display:flex;gap:8px;flex-wrap:wrap;">
+			<a href="ship_editor.html" style="flex:1;display:block;padding:8px;background:#0a1220;border:1px solid #2a4a7a;color:#8cf;font-family:monospace;font-size:0.7em;letter-spacing:1px;text-decoration:none;transition:background .3s;">Ship Editor</a>
 			<a href="editor.html" style="flex:1;display:block;padding:8px;background:#0a0a1a;border:1px solid #2a2a5a;color:#7af;font-family:monospace;font-size:0.7em;letter-spacing:1px;text-decoration:none;transition:background .3s;">Shape Editor</a>
 			<a href="beam_editor.html" style="flex:1;display:block;padding:8px;background:#0a1a0a;border:1px solid #2a5a2a;color:#5f8;font-family:monospace;font-size:0.7em;letter-spacing:1px;text-decoration:none;transition:background .3s;">Beam Editor</a>
 		</div>
@@ -164,7 +239,12 @@
 			<div id=players></div>
 		</left>
 		<main>
-			<h2>Game</h2><hr>
+			<div id="ship-select">
+				<h3>Select Ship</h3>
+				<div id="ship-cards"></div>
+			</div>
+			<hr style="border-color:#1a2a3a;margin:12px 0;">
+			<h2>Game</h2>
 			<button id=launch>Launch Game</button><br><br>
 		</main>
 	</lobby>

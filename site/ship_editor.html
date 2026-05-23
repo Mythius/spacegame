@@ -1,0 +1,282 @@
+<!DOCTYPE html>
+<html>
+<head>
+	<title>Ship Editor</title>
+	<style>
+		*, *::before, *::after { box-sizing: border-box; }
+		body {
+			margin: 0;
+			background: #03050d;
+			color: #cde;
+			font-family: monospace;
+			display: flex;
+			align-items: flex-start;
+			gap: 18px;
+			padding: 18px;
+			min-height: 100vh;
+		}
+
+		h3 {
+			margin: 0 0 8px;
+			font-size: 11px;
+			text-transform: uppercase;
+			letter-spacing: 1.5px;
+			color: #4af;
+			border-bottom: 1px solid #1a2a3a;
+			padding-bottom: 6px;
+		}
+
+		/* ── Palette panel ────────────────────────────────────── */
+		#palette-panel {
+			width: 200px;
+			flex-shrink: 0;
+			display: flex;
+			flex-direction: column;
+			gap: 4px;
+		}
+		#back-link {
+			margin-bottom: 10px;
+		}
+		#back-link a {
+			color: #567;
+			font-size: 11px;
+			text-decoration: none;
+			letter-spacing: 1px;
+		}
+		#back-link a:hover { color: #9af; }
+
+		#palette-list {
+			display: flex;
+			flex-direction: column;
+			gap: 3px;
+			max-height: calc(100vh - 80px);
+			overflow-y: auto;
+			padding-right: 4px;
+		}
+		#palette-list::-webkit-scrollbar { width: 3px; }
+		#palette-list::-webkit-scrollbar-thumb { background: #2a3a4a; }
+
+		.cat-header {
+			font-size: 9px;
+			letter-spacing: 1.5px;
+			text-transform: uppercase;
+			padding: 6px 4px 2px;
+			color: #456;
+			border-top: 1px solid #111a25;
+			margin-top: 4px;
+		}
+		.cat-header:first-child { margin-top: 0; border-top: none; }
+
+		.comp-card {
+			padding: 7px 8px;
+			background: #060d1a;
+			border: 1px solid #1a2a3a;
+			cursor: pointer;
+			border-radius: 3px;
+			border-left: 3px solid var(--c, #334);
+			transition: background .12s, border-color .12s;
+		}
+		.comp-card:hover { background: #0a1628; border-color: #2a4a6a; }
+		.comp-card.selected { background: #0b1f3a; border-color: #4af; }
+
+		.comp-name {
+			font-size: 11px;
+			color: #cde;
+			font-weight: bold;
+			margin-bottom: 2px;
+		}
+		.comp-card.selected .comp-name { color: var(--c, #7cf); }
+		.comp-meta { font-size: 9px; color: #456; margin-bottom: 2px; }
+		.comp-power { font-size: 9px; margin-bottom: 1px; }
+		.comp-extra { font-size: 9px; color: #578; }
+
+		/* ── Canvas area ──────────────────────────────────────── */
+		#canvas-area {
+			display: flex;
+			flex-direction: column;
+			gap: 8px;
+			flex-shrink: 0;
+			max-width: calc(100vw - 460px);
+			overflow-x: auto;
+		}
+		#grid-canvas {
+			display: block;
+			cursor: crosshair;
+			background: #070d1c;
+		}
+		#canvas-footer {
+			display: flex;
+			align-items: center;
+			justify-content: space-between;
+			gap: 8px;
+		}
+		#size-controls {
+			display: flex;
+			align-items: center;
+			gap: 5px;
+		}
+		#size-controls label { font-size: 10px; color: #456; letter-spacing: 1px; }
+		#size-controls span  { font-size: 11px; color: #345; }
+		#size-controls input[type=number] {
+			width: 46px;
+			background: #060d1a;
+			border: 1px solid #1a2a3a;
+			color: #8af;
+			font-family: monospace;
+			font-size: 11px;
+			padding: 3px 5px;
+			border-radius: 3px;
+		}
+		#canvas-footer button {
+			padding: 5px 10px;
+			background: #0f0a0a;
+			border: 1px solid #2a1a1a;
+			color: #966;
+			font-family: monospace;
+			font-size: 10px;
+			cursor: pointer;
+			border-radius: 3px;
+		}
+		#canvas-footer button:hover { background: #1e1010; color: #f88; }
+		#resize-btn {
+			background: #0a1220;
+			border-color: #1a3a5a;
+			color: #6af;
+		}
+		#resize-btn:hover { background: #0d2040; color: #9cf; }
+
+		/* ── Stats / info panel ───────────────────────────────── */
+		#stats-panel {
+			width: 200px;
+			flex-shrink: 0;
+			display: flex;
+			flex-direction: column;
+			gap: 12px;
+		}
+
+		.stat-row {
+			display: flex;
+			justify-content: space-between;
+			align-items: baseline;
+			padding: 3px 0;
+			border-bottom: 1px solid #0d1520;
+			font-size: 11px;
+		}
+		.stat-label { color: #567; }
+		.stat-value { color: #adf; font-size: 12px; }
+
+		#power-bar-wrap {
+			height: 4px;
+			background: #0d1520;
+			border-radius: 2px;
+			margin: 4px 0 2px;
+			overflow: hidden;
+		}
+		#power-bar-fill {
+			height: 100%;
+			border-radius: 2px;
+			transition: width .3s, background .3s;
+		}
+		#power-status {
+			font-size: 9px;
+			text-align: right;
+			color: #456;
+		}
+
+		.panel-divider {
+			border: none;
+			border-top: 1px solid #1a2a3a;
+			margin: 0;
+		}
+
+		/* Selected component info */
+		.no-sel { font-size: 10px; color: #334; padding: 4px 0; }
+		.sel-name { font-size: 13px; font-weight: bold; margin-bottom: 2px; }
+		.sel-key { font-size: 9px; color: #456; margin-bottom: 8px; letter-spacing: 1px; }
+		.sel-table { width: 100%; border-collapse: collapse; font-size: 10px; }
+		.sel-table td { padding: 3px 2px; border-bottom: 1px solid #0d1520; vertical-align: top; }
+		.sel-table td:first-child { color: #567; white-space: nowrap; padding-right: 8px; }
+		.sel-table td:last-child { color: #9bf; text-align: right; }
+		.sel-hint { font-size: 9px; color: #334; margin-top: 10px; line-height: 1.8; }
+
+		/* File buttons */
+		#file-btns { display: flex; flex-direction: column; gap: 5px; }
+		.file-btn {
+			padding: 7px 10px;
+			background: #0a1a2a;
+			border: 1px solid #1a3a5a;
+			color: #7af;
+			font-family: monospace;
+			font-size: 10px;
+			letter-spacing: 1px;
+			cursor: pointer;
+			border-radius: 3px;
+			text-align: left;
+		}
+		.file-btn:hover { background: #0d2a40; }
+		.file-btn.danger { background: #0f0a0a; border-color: #2a1a1a; color: #966; }
+		.file-btn.danger:hover { background: #1e1010; color: #f88; }
+	</style>
+	<script src="/shared/components.js"></script>
+	<script src="polar-object.js"></script>
+</head>
+<body>
+
+<div id="palette-panel">
+	<div id="back-link"><a href="/">← Menu</a></div>
+	<h3>Components</h3>
+	<div id="palette-list"></div>
+</div>
+
+<div id="canvas-area">
+	<canvas id="grid-canvas"></canvas>
+	<div id="canvas-footer">
+		<div id="size-controls">
+			<label>Size</label>
+			<input type="number" id="grid-cols" min="2" max="40" value="10">
+			<span>×</span>
+			<input type="number" id="grid-rows" min="2" max="40" value="10">
+			<button id="resize-btn" onclick="applyGridSize()">Resize</button>
+		</div>
+		<button onclick="clearGrid()">Clear</button>
+	</div>
+</div>
+
+<div id="stats-panel">
+	<div>
+		<h3>Ship Stats</h3>
+		<div id="stats-display">
+			<div class="stat-row"><span class="stat-label">Power Out</span><span class="stat-value" id="stat-power-out">0 W</span></div>
+			<div class="stat-row"><span class="stat-label">Power Draw</span><span class="stat-value" id="stat-power-draw">0 W</span></div>
+			<div id="power-bar-wrap"><div id="power-bar-fill" style="width:100%;background:#4a8"></div></div>
+			<div id="power-status">No components</div>
+			<div class="stat-row" style="margin-top:4px"><span class="stat-label">Max Speed</span><span class="stat-value" id="stat-speed">0</span></div>
+			<div class="stat-row"><span class="stat-label">Hull HP</span><span class="stat-value" id="stat-hp">0</span></div>
+			<div class="stat-row"><span class="stat-label">Shields</span><span class="stat-value" id="stat-shield">0 HP</span></div>
+			<div class="stat-row"><span class="stat-label">Fuel Life</span><span class="stat-value" id="stat-fuel">--</span></div>
+			<div class="stat-row"><span class="stat-label">Mass</span><span class="stat-value" id="stat-mass">0</span></div>
+			<div class="stat-row"><span class="stat-label">Parts</span><span class="stat-value" id="stat-parts">0</span></div>
+		</div>
+	</div>
+
+	<hr class="panel-divider">
+
+	<div>
+		<h3>Selected</h3>
+		<div id="selected-info"><div class="no-sel">Click a component to select it.</div></div>
+	</div>
+
+	<hr class="panel-divider">
+
+	<div>
+		<h3>File</h3>
+		<div id="file-btns">
+			<button class="file-btn" onclick="exportDesign()">Export JSON</button>
+			<button class="file-btn" onclick="importDesign()">Import JSON</button>
+		</div>
+	</div>
+</div>
+
+<script src="ship_editor.js"></script>
+</body>
+</html>

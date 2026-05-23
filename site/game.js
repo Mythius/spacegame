@@ -451,9 +451,18 @@ function drawSectorGrid(ox, oy, W, H) {
 
 function drawShip(ship, ox, oy, isMe) {
   const sx = ship.x + ox, sy = ship.y + oy;
+
+  // Scale ship visually with its template's grid footprint
+  let S = 1.0;
+  if (ship.templateKey && typeof SHIP_TEMPLATES !== 'undefined') {
+    const tpl = SHIP_TEMPLATES.find(t => t.key === ship.templateKey);
+    if (tpl) S = 1.0 + (tpl.gridW * tpl.gridH - 36) / 64 * 0.6;
+  }
+
   ctx.save();
   ctx.translate(sx, sy);
   ctx.rotate(ship.direction);
+  ctx.scale(S, S);
 
   if (ship.thrusting) {
     const grd = ctx.createRadialGradient(-22, 0, 2, -22, 0, 20);
@@ -477,10 +486,12 @@ function drawShip(ship, ox, oy, isMe) {
   ctx.closePath(); ctx.fill(); ctx.stroke();
 
   ctx.restore();
+
+  // Name label: offset scales with ship size
   ctx.font      = '10px monospace';
   ctx.fillStyle = isMe ? '#7cf' : '#fa8';
   ctx.textAlign = 'center';
-  ctx.fillText(ship.name, sx, sy - 30);
+  ctx.fillText(ship.name, sx, sy - Math.round(30 * S));
 }
 
 // ── Boundary warning ──────────────────────────────────────────────────────────

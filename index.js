@@ -43,6 +43,7 @@ const { RESOURCE_TYPES, ResourceDeposit, ResourceBag }      = Resources;
 const { SolarSystem }                                        = World;
 const { buildSector }                                        = require('./shared/worldgen');
 const { BUILDING_REGISTRY }                                  = require('./shared/buildings');
+const { SHIP_TEMPLATES, shipPhysics }                        = require('./shared/ships');
 
 // ── Player saves ──────────────────────────────────────────────────────────────
 const nodePath = require('path');
@@ -256,6 +257,8 @@ class Game {
 		const cy = CONSTANTS.SECTOR_SIZE * (CONSTANTS.SECTOR_GRID_H / 2);
 
 		for (const user of users) {
+			const tpl   = user.shipTemplate || SHIP_TEMPLATES[0];
+			const phys  = shipPhysics(tpl);
 			const angle = Math.random() * Math.PI * 2;
 			this.ships.set(user.id, {
 				id: user.id, name: user.name,
@@ -263,9 +266,14 @@ class Game {
 				y: cy + Math.sin(angle) * 300,
 				vx: 0, vy: 0,
 				direction: angle,
-				hp: 100, maxHp: 100,
+				hp: phys.maxHp, maxHp: phys.maxHp,
 				thrusting: false,
 				input: {},
+				templateKey: tpl.key,
+				maxSpeed:    phys.maxSpeed,
+				thrust:      phys.thrust,
+				turnRate:    phys.turnRate,
+				drag:        phys.drag,
 			});
 			this.playerBags.set(user.id, new ResourceBag(500));
 		}
@@ -329,24 +337,28 @@ class Game {
 
 	tick(dt) {
 		for (const ship of this.ships.values()) {
-			const inp = ship.input || {};
+			const inp      = ship.input    || {};
+			const turnRate = ship.turnRate ?? TURN_RATE;
+			const thrust   = ship.thrust   ?? THRUST;
+			const maxSpeed = ship.maxSpeed ?? MAX_SPEED;
+			const drag     = ship.drag     ?? DRAG;
 
-			if (inp.turnLeft)  ship.direction -= TURN_RATE * dt;
-			if (inp.turnRight) ship.direction += TURN_RATE * dt;
+			if (inp.turnLeft)  ship.direction -= turnRate * dt;
+			if (inp.turnRight) ship.direction += turnRate * dt;
 
 			if (inp.thrust) {
-				ship.vx += Math.cos(ship.direction) * THRUST * dt;
-				ship.vy += Math.sin(ship.direction) * THRUST * dt;
+				ship.vx += Math.cos(ship.direction) * thrust * dt;
+				ship.vy += Math.sin(ship.direction) * thrust * dt;
 			}
 			if (inp.brake) { ship.vx *= BRAKE_MUL; ship.vy *= BRAKE_MUL; }
 
-			ship.vx *= DRAG;
-			ship.vy *= DRAG;
+			ship.vx *= drag;
+			ship.vy *= drag;
 
 			const spd = Math.sqrt(ship.vx ** 2 + ship.vy ** 2);
-			if (spd > MAX_SPEED) {
-				ship.vx = ship.vx / spd * MAX_SPEED;
-				ship.vy = ship.vy / spd * MAX_SPEED;
+			if (spd > maxSpeed) {
+				ship.vx = ship.vx / spd * maxSpeed;
+				ship.vy = ship.vy / spd * maxSpeed;
 			}
 
 			ship.x += ship.vx * dt;
@@ -359,8 +371,8 @@ class Game {
 		return {
 			t: Date.now(),
 			ships: [...this.ships.values()].map(
-				({ id, name, x, y, vx, vy, direction, hp, maxHp, thrusting }) =>
-				({ id, name, x, y, vx, vy, direction, hp, maxHp, thrusting })
+				({ id, name, x, y, vx, vy, direction, hp, maxHp, thrusting, templateKey }) =>
+				({ id, name, x, y, vx, vy, direction, hp, maxHp, thrusting, templateKey })
 			),
 		};
 	}
@@ -439,12 +451,19 @@ io.on('connection',socket=>{
 			socket.emit('accepted', actual_player);
 		}
 	});
-	socket.on('login',name=>{
-		if(logged_on) return;
-		me = new User(name,requestCallback,acceptCallback,startCallback);
+	socket.on('login', name => {
+		if (logged_on) return;
+		me = new User(name, requestCallback, acceptCallback, startCallback);
+		me.shipTemplate = SHIP_TEMPLATES[0]; // default to scout
 		logged_on = true;
 		friends.push(me);
 		updateUsers();
+	});
+
+	socket.on('selectShip', key => {
+		if (!me) return;
+		const tpl = SHIP_TEMPLATES.find(t => t.key === key);
+		if (tpl) me.shipTemplate = tpl;
 	});
 	socket.on('disconnect',()=>{
 		if(!logged_on) return;
