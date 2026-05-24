@@ -225,6 +225,7 @@ function renderLoop(timestamp) {
     drawShip(ship, ox, oy, ship.id === myPlayerId);
 
   if (me) {
+    if (keys['KeyE'] && nearDeposit) drawMiningLaser(me, nearDeposit, ox, oy);
     if (nearDeposit) drawMinePrompt(nearDeposit, ox, oy);
     drawBoundaryWarning(me);
     drawHUD(me);
@@ -246,6 +247,46 @@ function findNearDeposit(ship) {
     if (d < bestDist) { bestDist = d; best = ore; }
   }
   return best;
+}
+
+function drawMiningLaser(ship, ore, ox, oy) {
+  const sx    = ship.x + ox, sy = ship.y + oy;
+  const ex    = ore.x  + ox, ey = ore.y  + oy;
+  const pulse = 0.5 + 0.5 * Math.sin(Date.now() / 80);
+
+  ctx.save();
+
+  // Outer glow beam
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+  ctx.lineTo(ex, ey);
+  ctx.strokeStyle = ore.tip;
+  ctx.lineWidth   = 2 + pulse * 1.5;
+  ctx.shadowColor = ore.tip;
+  ctx.shadowBlur  = 12 + pulse * 10;
+  ctx.globalAlpha = 0.55 + pulse * 0.25;
+  ctx.stroke();
+
+  // Bright inner core
+  ctx.beginPath();
+  ctx.moveTo(sx, sy);
+  ctx.lineTo(ex, ey);
+  ctx.strokeStyle = '#ffffff';
+  ctx.lineWidth   = 0.6;
+  ctx.shadowBlur  = 4;
+  ctx.globalAlpha = 0.7 + pulse * 0.3;
+  ctx.stroke();
+
+  // Impact spark at the ore end
+  ctx.beginPath();
+  ctx.arc(ex, ey, 3 + pulse * 2, 0, Math.PI * 2);
+  ctx.fillStyle   = ore.tip;
+  ctx.shadowColor = ore.tip;
+  ctx.shadowBlur  = 18 + pulse * 12;
+  ctx.globalAlpha = 0.8 + pulse * 0.2;
+  ctx.fill();
+
+  ctx.restore();
 }
 
 function drawMinePrompt(ore, ox, oy) {
@@ -530,7 +571,8 @@ function drawShip(ship, ox, oy, isMe) {
   if (polar) {
     polar.x         = sx;
     polar.y         = sy;
-    polar.direction = ship.direction * (180 / Math.PI);
+    // Assets face up (270°); +90 aligns nose to ship's travel direction
+    polar.direction = ship.direction * (180 / Math.PI) + 90;
     polar.render(ctx);
   } else {
     // Fallback rect — asset JSON not found for this template
