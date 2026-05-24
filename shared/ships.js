@@ -123,14 +123,14 @@
     const sizeFactor = Math.sqrt(36 / Math.max(36, cellCount));
 
     // Max speed hard-capped by physical size
-    const maxSpeed = Math.round(500 * sizeFactor);
+    const maxSpeed = Math.round(800 * sizeFactor);
 
     // Thrust acceleration: driven by thruster efficiency, dampened by size
     const thrustRatio = totalThrust / totalMass;
     const thrust      = Math.max(80, Math.min(380, thrustRatio * 18));
 
     // Turn rate strictly from size
-    const turnRate = +(3.2 * sizeFactor).toFixed(3);
+    const turnRate = +(5.5 * sizeFactor).toFixed(3);
 
     return { maxSpeed, thrust, turnRate, maxHp, drag: 0.986 };
   }
