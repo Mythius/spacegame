@@ -298,9 +298,9 @@
 
   const COMPONENT_REGISTRY = {
     // ── Cores ──────────────────────────────────────────────────────────────
-    core_basic:       { cls: CoreComponent,    defaults: { name: 'Basic Reactor',    hp: 150, gridW: 2, gridH: 2, powerOutput: 100, fuelRate: 0.04 } },
-    core_advanced:    { cls: CoreComponent,    defaults: { name: 'Advanced Reactor', hp: 200, gridW: 2, gridH: 2, powerOutput: 180, fuelRate: 0.06 } },
-    core_fusion:      { cls: CoreComponent,    defaults: { name: 'Fusion Reactor',   hp: 250, gridW: 3, gridH: 3, powerOutput: 350, fuelRate: 0.10 } },
+    core_basic:       { cls: CoreComponent,    asset: 'core.json',     defaults: { name: 'Basic Reactor',    hp: 150, gridW: 2, gridH: 2, powerOutput: 100, fuelRate: 0.04 } },
+    core_advanced:    { cls: CoreComponent,    asset: 'core.json',     defaults: { name: 'Advanced Reactor', hp: 200, gridW: 2, gridH: 2, powerOutput: 180, fuelRate: 0.06 } },
+    core_fusion:      { cls: CoreComponent,    asset: 'core.json',     defaults: { name: 'Fusion Reactor',   hp: 250, gridW: 3, gridH: 3, powerOutput: 350, fuelRate: 0.10 } },
 
     // ── Armor ──────────────────────────────────────────────────────────────
     armor_light:      { cls: ArmorComponent,   defaults: { name: 'Light Armor',  hp: 80,  gridW: 1, gridH: 1, armorRating: 1.0 } },
@@ -309,43 +309,43 @@
     armor_titan:      { cls: ArmorComponent,   defaults: { name: 'Titan Armor',  hp: 400, gridW: 1, gridH: 1, armorRating: 3.0, massContrib: 4 } },
 
     // ── Thrusters ──────────────────────────────────────────────────────────
-    thruster_small:   { cls: ThrusterComponent, defaults: { name: 'Small Thruster',   hp: 60,  gridW: 1, gridH: 1, thrust: 80,  powerDraw: 8  } },
-    thruster_medium:  { cls: ThrusterComponent, defaults: { name: 'Medium Thruster',  hp: 80,  gridW: 1, gridH: 2, thrust: 160, powerDraw: 15 } },
-    thruster_large:   { cls: ThrusterComponent, defaults: { name: 'Large Thruster',   hp: 100, gridW: 2, gridH: 2, thrust: 320, powerDraw: 28 } },
-    thruster_ion:     { cls: ThrusterComponent, defaults: { name: 'Ion Drive',        hp: 80,  gridW: 1, gridH: 3, thrust: 500, powerDraw: 45 } },
+    thruster_small:   { cls: ThrusterComponent, asset: 'thruster.json', defaults: { name: 'Small Thruster',   hp: 60,  gridW: 1, gridH: 1, thrust: 80,  powerDraw: 8  } },
+    thruster_medium:  { cls: ThrusterComponent, asset: 'thruster.json', defaults: { name: 'Medium Thruster',  hp: 80,  gridW: 1, gridH: 2, thrust: 160, powerDraw: 15 } },
+    thruster_large:   { cls: ThrusterComponent, asset: 'thruster.json', defaults: { name: 'Large Thruster',   hp: 100, gridW: 2, gridH: 2, thrust: 320, powerDraw: 28 } },
+    thruster_ion:     { cls: ThrusterComponent, asset: 'thruster.json', defaults: { name: 'Ion Drive',        hp: 80,  gridW: 1, gridH: 3, thrust: 500, powerDraw: 45 } },
 
     // ── Shields ────────────────────────────────────────────────────────────
-    shield_gen_small: { cls: ShieldGenComponent, defaults: { name: 'Shield Gen I',    hp: 80,  gridW: 1, gridH: 2, shieldStrength: 150, rechargeRate: 12, powerDraw: 20 } },
-    shield_gen_large: { cls: ShieldGenComponent, defaults: { name: 'Shield Gen II',   hp: 120, gridW: 2, gridH: 2, shieldStrength: 350, rechargeRate: 25, powerDraw: 40 } },
-    shield_gen_omni:  { cls: ShieldGenComponent, defaults: { name: 'Omni Shield',     hp: 160, gridW: 2, gridH: 3, shieldStrength: 600, rechargeRate: 40, powerDraw: 70 } },
+    shield_gen_small: { cls: ShieldGenComponent, asset: 'shieldgenerator.json', defaults: { name: 'Shield Gen I',    hp: 80,  gridW: 1, gridH: 2, shieldStrength: 150, rechargeRate: 12, powerDraw: 20 } },
+    shield_gen_large: { cls: ShieldGenComponent, asset: 'shieldgenerator.json', defaults: { name: 'Shield Gen II',   hp: 120, gridW: 2, gridH: 2, shieldStrength: 350, rechargeRate: 25, powerDraw: 40 } },
+    shield_gen_omni:  { cls: ShieldGenComponent, asset: 'shieldgenerator.json', defaults: { name: 'Omni Shield',     hp: 160, gridW: 2, gridH: 3, shieldStrength: 600, rechargeRate: 40, powerDraw: 70 } },
 
     // ── Storage ────────────────────────────────────────────────────────────
-    storage_small:    { cls: StorageComponent,  defaults: { name: 'Small Tank',   hp: 50,  gridW: 1, gridH: 1, capacity: 100 } },
-    storage_medium:   { cls: StorageComponent,  defaults: { name: 'Medium Tank',  hp: 80,  gridW: 2, gridH: 1, capacity: 300 } },
-    storage_large:    { cls: StorageComponent,  defaults: { name: 'Large Tank',   hp: 100, gridW: 2, gridH: 2, capacity: 700 } },
-    storage_vault:    { cls: StorageComponent,  defaults: { name: 'Cargo Vault',  hp: 150, gridW: 3, gridH: 3, capacity: 2000 } },
+    storage_small:    { cls: StorageComponent,  asset: 'container.json',  defaults: { name: 'Small Tank',   hp: 50,  gridW: 1, gridH: 1, capacity: 100 } },
+    storage_medium:   { cls: StorageComponent,  asset: 'container.json',  defaults: { name: 'Medium Tank',  hp: 80,  gridW: 2, gridH: 1, capacity: 300 } },
+    storage_large:    { cls: StorageComponent,  asset: 'container.json',  defaults: { name: 'Large Tank',   hp: 100, gridW: 2, gridH: 2, capacity: 700 } },
+    storage_vault:    { cls: StorageComponent,  asset: 'container.json',  defaults: { name: 'Cargo Vault',  hp: 150, gridW: 3, gridH: 3, capacity: 2000 } },
 
     // ── Fabricators ────────────────────────────────────────────────────────
-    fabricator_basic: { cls: FabricatorComponent, defaults: { name: 'Fabricator',        hp: 100, gridW: 2, gridH: 2, powerDraw: 30 } },
-    fabricator_adv:   { cls: FabricatorComponent, defaults: { name: 'Advanced Fabricator', hp: 140, gridW: 3, gridH: 2, powerDraw: 50 } },
+    fabricator_basic: { cls: FabricatorComponent, asset: 'fabricator.json', defaults: { name: 'Fabricator',        hp: 100, gridW: 2, gridH: 2, powerDraw: 30 } },
+    fabricator_adv:   { cls: FabricatorComponent, asset: 'fabricator.json', defaults: { name: 'Advanced Fabricator', hp: 140, gridW: 3, gridH: 2, powerDraw: 50 } },
 
     // ── Drills ─────────────────────────────────────────────────────────────
-    drill_basic:      { cls: DrillComponent,    defaults: { name: 'Mining Drill',   hp: 80,  gridW: 1, gridH: 2, mineRate: 5,  powerDraw: 15 } },
-    drill_heavy:      { cls: DrillComponent,    defaults: { name: 'Heavy Drill',    hp: 120, gridW: 2, gridH: 2, mineRate: 12, powerDraw: 28 } },
+    drill_basic:      { cls: DrillComponent,    asset: 'drill.json',    defaults: { name: 'Mining Drill',   hp: 80,  gridW: 1, gridH: 2, mineRate: 5,  powerDraw: 15 } },
+    drill_heavy:      { cls: DrillComponent,    asset: 'drill.json',    defaults: { name: 'Heavy Drill',    hp: 120, gridW: 2, gridH: 2, mineRate: 12, powerDraw: 28 } },
 
     // ── Tethers ────────────────────────────────────────────────────────────
     tether_basic:     { cls: TetherComponent,   defaults: { name: 'Tether Beam',    hp: 80,  gridW: 1, gridH: 2, maxTethers: 1, range: 350 } },
     tether_multi:     { cls: TetherComponent,   defaults: { name: 'Multi-Tether',   hp: 120, gridW: 2, gridH: 2, maxTethers: 3, range: 500 } },
 
     // ── Weapons ────────────────────────────────────────────────────────────
-    weapon_laser_t:   { cls: WeaponComponent,   defaults: { name: 'Laser Turret',   hp: 60,  gridW: 1, gridH: 1, weaponType: 'laser_turret' } },
-    weapon_ion_t:     { cls: WeaponComponent,   defaults: { name: 'Ion Cannon',     hp: 80,  gridW: 1, gridH: 2, weaponType: 'ion_cannon'   } },
-    weapon_plasma_t:  { cls: WeaponComponent,   defaults: { name: 'Plasma Turret',  hp: 90,  gridW: 2, gridH: 2, weaponType: 'plasma_turret'} },
-    weapon_claw:      { cls: ClawComponent,     defaults: { name: 'Giant Claw',     hp: 100, gridW: 1, gridH: 3, range: 200, lockTime: 4   } },
+    weapon_laser_t:   { cls: WeaponComponent,   asset: 'gun1.json',     defaults: { name: 'Laser Turret',   hp: 60,  gridW: 1, gridH: 1, weaponType: 'laser_turret' } },
+    weapon_ion_t:     { cls: WeaponComponent,   asset: 'gun2.json',     defaults: { name: 'Ion Cannon',     hp: 80,  gridW: 1, gridH: 2, weaponType: 'ion_cannon'   } },
+    weapon_plasma_t:  { cls: WeaponComponent,   asset: 'gun3.json',     defaults: { name: 'Plasma Turret',  hp: 90,  gridW: 2, gridH: 2, weaponType: 'plasma_turret'} },
+    weapon_claw:      { cls: ClawComponent,     asset: 'gun4.json',     defaults: { name: 'Giant Claw',     hp: 100, gridW: 1, gridH: 3, range: 200, lockTime: 4   } },
 
     // ── Drone Bays ─────────────────────────────────────────────────────────
-    drone_bay_basic:  { cls: DroneBayComponent, defaults: { name: 'Drone Bay',      hp: 80,  gridW: 2, gridH: 2, maxDrones: 2, spawnRate: 30 } },
-    drone_bay_adv:    { cls: DroneBayComponent, defaults: { name: 'Heavy Drone Bay',hp: 120, gridW: 3, gridH: 2, maxDrones: 5, spawnRate: 20 } },
+    drone_bay_basic:  { cls: DroneBayComponent, asset: 'bay.json',      defaults: { name: 'Drone Bay',      hp: 80,  gridW: 2, gridH: 2, maxDrones: 2, spawnRate: 30 } },
+    drone_bay_adv:    { cls: DroneBayComponent, asset: 'bay.json',      defaults: { name: 'Heavy Drone Bay',hp: 120, gridW: 3, gridH: 2, maxDrones: 5, spawnRate: 20 } },
   };
 
   function createComponent(typeKey, overrides = {}) {

@@ -361,41 +361,70 @@ function drawAsteroid({ cx, cy, baseR, asteroidPts, facets, craters }, ox, oy) {
 
 // ── Ores ──────────────────────────────────────────────────────────────────────
 
+const ORE_VEIN_ASSETS = {
+  iron:              'vein1.json',
+  carbon:            'vein2.json',
+  helium3:           'vein3.json',
+  crystal:           'vein4.json',
+  titanium:          'vein5.json',
+  plasma_gel:        'vein1.json',
+  void_crystal:      'vein2.json',
+  fusion_fragment:   'vein3.json',
+  ancient_schematic: 'vein4.json',
+};
+
+const _orePolarCache = new Map();
+
+function _getOrePolar(oreType) {
+  if (_orePolarCache.has(oreType)) return _orePolarCache.get(oreType);
+  const asset = ORE_VEIN_ASSETS[oreType];
+  if (!asset) {
+    if (!_warnedPolarKeys.has(`ore:${oreType}`)) {
+      console.log(`[PolarObject] no vein asset for ore type "${oreType}"`);
+      _warnedPolarKeys.add(`ore:${oreType}`);
+    }
+    _orePolarCache.set(oreType, null);
+    return null;
+  }
+  const p = new PolarObject(`/assets/${asset}`);
+  p.scale = 3;
+  p.onload = () => p.show();
+  _orePolarCache.set(oreType, p);
+  return p;
+}
+
 function drawOres({ ores }, ox, oy) {
   for (const ore of ores) {
-    const sx = ore.x + ox, sy = ore.y + oy;
-    const s  = 10;
-    const isNear    = nearDeposit && nearDeposit.id === ore.id;
+    const sx         = ore.x + ox, sy = ore.y + oy;
+    const isNear     = nearDeposit && nearDeposit.id === ore.id;
     const isDepleted = depleted.has(ore.id);
+    const polar      = _getOrePolar(ore.type);
 
     ctx.save();
-    if (isDepleted) {
-      ctx.globalAlpha = 0.25;
-    } else if (isNear) {
+    ctx.globalAlpha = isDepleted ? 0.25 : 1;
+    if (!isDepleted) {
       ctx.shadowColor = ore.tip;
-      ctx.shadowBlur  = 16;
-    } else {
-      ctx.shadowColor = ore.tip;
-      ctx.shadowBlur  = 6;
+      ctx.shadowBlur  = isNear ? 16 : 6;
     }
 
-    ctx.beginPath();
-    ctx.moveTo(sx,     sy - s);
-    ctx.lineTo(sx + s, sy + s * 0.6);
-    ctx.lineTo(sx - s, sy + s * 0.6);
-    ctx.closePath();
-    ctx.fillStyle   = isDepleted ? '#444' : ore.color;
-    ctx.fill();
-    ctx.strokeStyle = isDepleted ? '#333' : ore.tip;
-    ctx.lineWidth   = isNear ? 2 : 1;
-    ctx.stroke();
+    if (polar) {
+      polar.x             = sx;
+      polar.y             = sy;
+      polar.colorOverride = isDepleted ? '#666' : ore.color;
+      polar.lineWidth     = isNear ? 2.5 : 1.5;
+      polar.render(ctx);
+    } else {
+      // Fallback rect — vein asset JSON not found for this ore type
+      ctx.fillStyle = isDepleted ? '#444' : ore.color;
+      ctx.fillRect(sx - 8, sy - 8, 16, 16);
+    }
     ctx.restore();
 
-    ctx.font      = '9px monospace';
-    ctx.fillStyle = isDepleted ? '#555' : ore.tip;
-    ctx.textAlign = 'center';
+    ctx.font        = '9px monospace';
+    ctx.fillStyle   = isDepleted ? '#555' : ore.tip;
+    ctx.textAlign   = 'center';
     ctx.globalAlpha = isDepleted ? 0.4 : 1;
-    ctx.fillText(isDepleted ? 'depleted' : ore.type, sx, sy + s + 12);
+    ctx.fillText(isDepleted ? 'depleted' : ore.type, sx, sy + 14);
     ctx.globalAlpha = 1;
   }
 }
@@ -449,45 +478,70 @@ function drawSectorGrid(ox, oy, W, H) {
 
 // ── Ship ──────────────────────────────────────────────────────────────────────
 
+// Cache: templateKey → PolarObject (or null when no asset defined)
+const _shipPolarCache  = new Map();
+const _warnedPolarKeys = new Set();
+
+function _getShipPolar(templateKey) {
+  if (_shipPolarCache.has(templateKey)) return _shipPolarCache.get(templateKey);
+  const tpl = (typeof SHIP_TEMPLATES !== 'undefined')
+    ? SHIP_TEMPLATES.find(t => t.key === templateKey) : null;
+  if (!tpl || !tpl.asset) {
+    if (!_warnedPolarKeys.has(templateKey)) {
+      console.log(`[PolarObject] no asset defined for ship template "${templateKey}"`);
+      _warnedPolarKeys.add(templateKey);
+    }
+    _shipPolarCache.set(templateKey, null);
+    return null;
+  }
+  const p = new PolarObject(`/assets/${tpl.asset}`);
+  p.scale = tpl.scale || 5;
+  p.onload = () => p.show();
+  _shipPolarCache.set(templateKey, p);
+  return p;
+}
+
 function drawShip(ship, ox, oy, isMe) {
   const sx = ship.x + ox, sy = ship.y + oy;
 
-  // Scale ship visually with its template's grid footprint
-  let S = 1.0;
-  if (ship.templateKey && typeof SHIP_TEMPLATES !== 'undefined') {
-    const tpl = SHIP_TEMPLATES.find(t => t.key === ship.templateKey);
-    if (tpl) S = 1.0 + (tpl.gridW * tpl.gridH - 36) / 64 * 0.6;
+  const tpl = ship.templateKey && typeof SHIP_TEMPLATES !== 'undefined'
+    ? SHIP_TEMPLATES.find(t => t.key === ship.templateKey) : null;
+  const S = tpl ? 1.0 + (tpl.gridW * tpl.gridH - 36) / 64 * 0.6 : 1.0;
+
+  const polar = ship.templateKey ? _getShipPolar(ship.templateKey) : null;
+
+  // Thruster glow (ship-local space)
+  if (ship.thrusting) {
+    ctx.save();
+    ctx.translate(sx, sy);
+    ctx.rotate(ship.direction);
+    const gr = ctx.createRadialGradient(-22 * S, 0, 2, -22 * S, 0, 20 * S);
+    gr.addColorStop(0, isMe ? 'rgba(80,200,255,0.8)' : 'rgba(255,160,60,0.8)');
+    gr.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = gr;
+    ctx.beginPath(); ctx.arc(-22 * S, 0, 20 * S, 0, Math.PI * 2); ctx.fill();
+    ctx.restore();
   }
 
   ctx.save();
-  ctx.translate(sx, sy);
-  ctx.rotate(ship.direction);
-  ctx.scale(S, S);
-
-  if (ship.thrusting) {
-    const grd = ctx.createRadialGradient(-22, 0, 2, -22, 0, 20);
-    grd.addColorStop(0, isMe ? 'rgba(80,200,255,0.8)' : 'rgba(255,160,60,0.8)');
-    grd.addColorStop(1, 'rgba(0,0,0,0)');
-    ctx.fillStyle = grd;
-    ctx.beginPath(); ctx.arc(-22, 0, 20, 0, Math.PI * 2); ctx.fill();
-  }
-
   ctx.shadowColor = isMe ? 'rgba(40,160,255,0.4)' : 'rgba(255,120,40,0.4)';
   ctx.shadowBlur  = 10;
-  ctx.fillStyle   = isMe ? '#28a' : '#b52';
-  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-10,16); ctx.lineTo(-16,10); ctx.closePath(); ctx.fill();
-  ctx.beginPath(); ctx.moveTo(0,0); ctx.lineTo(-10,-16); ctx.lineTo(-16,-10); ctx.closePath(); ctx.fill();
 
-  ctx.fillStyle   = isMe ? '#4af' : '#f84';
-  ctx.strokeStyle = 'rgba(255,255,255,0.6)';
-  ctx.lineWidth   = 1;
-  ctx.beginPath();
-  ctx.moveTo(24,0); ctx.lineTo(-12,10); ctx.lineTo(-6,0); ctx.lineTo(-12,-10);
-  ctx.closePath(); ctx.fill(); ctx.stroke();
-
+  if (polar) {
+    polar.x         = sx;
+    polar.y         = sy;
+    polar.direction = ship.direction * (180 / Math.PI);
+    polar.render(ctx);
+  } else {
+    // Fallback rect — asset JSON not found for this template
+    ctx.translate(sx, sy);
+    ctx.rotate(ship.direction);
+    ctx.fillStyle = isMe ? '#4af' : '#f84';
+    ctx.fillRect(-15 * S, -10 * S, 30 * S, 20 * S);
+  }
   ctx.restore();
 
-  // Name label: offset scales with ship size
+  // Name label
   ctx.font      = '10px monospace';
   ctx.fillStyle = isMe ? '#7cf' : '#fa8';
   ctx.textAlign = 'center';

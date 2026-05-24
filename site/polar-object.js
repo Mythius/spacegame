@@ -7,6 +7,7 @@ class PolarObject {
 		this.flipH = false;
 		this.flipV = false;
 		this.lineWidth = 2;
+		this.colorOverride = null;  // when set, overrides all segment colors
 		this.visible = false;
 		this._shapes = [];
 		this.loaded = false;
@@ -60,7 +61,7 @@ class PolarObject {
 				let seg = shape.segs[i];
 				if(!seg.points || seg.points.length === 0) continue;
 				ctx.beginPath();
-				ctx.strokeStyle = seg.color || '#ffffff';
+				ctx.strokeStyle = this.colorOverride || seg.color || '#ffffff';
 				ctx.lineWidth = this.lineWidth;
 				let first = this._toCanvas(seg.points[0].a, seg.points[0].d);
 				ctx.moveTo(first.x, first.y);

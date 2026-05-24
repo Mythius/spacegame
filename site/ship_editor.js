@@ -29,12 +29,18 @@
   let cols = 10;
   let rows = 10;
 
-  // ── Polar shape for core_basic ────────────────────────────────
-  // Loaded once; rendered inside the core_basic cell in draw().
-  const coreShape = new PolarObject('/assets/core.json');
-  coreShape.show();
-  coreShape.onload = () => draw();
-  // Max distance in core.json is ~7.11; scale is set per-draw to fit the cell.
+  // ── Component shape cache ─────────────────────────────────────
+  // Lazy-loads one PolarObject per asset file; triggers a redraw on load.
+  const _compShapeCache = new Map();
+  function _getCompShape(asset) {
+    if (!_compShapeCache.has(asset)) {
+      const p = new PolarObject(`/assets/${asset}`);
+      p.lineWidth = 1;
+      p.onload    = () => { p.show(); draw(); };
+      _compShapeCache.set(asset, p);
+    }
+    return _compShapeCache.get(asset);
+  }
 
   // ── State ──────────────────────────────────────────────────────
   let grid        = new ShipGrid(cols, rows);
@@ -188,28 +194,34 @@
         ctx.lineWidth = 1.5;
         ctx.strokeRect(ox + 0.75, oy + 0.75, cw - 1.5, ch - 1.5);
 
-        // core_basic: render the polar shape from core.json
-        if (comp.typeKey === 'core_basic' && coreShape.loaded) {
-          ctx.save();
-          ctx.beginPath();
-          ctx.rect(ox, oy, cw, ch);
-          ctx.clip();
-
-          coreShape.x     = ox + cw / 2;
-          coreShape.y     = oy + ch / 2;
-          // core.json max d ≈ 7.11; scale so diameter fills ~80% of the shorter side
-          coreShape.scale = (Math.min(cw, ch) * 0.4) / 7.11;
-          coreShape.lineWidth = 1;
-          coreShape.render(ctx);
-
-          ctx.restore();
+        // Render polar shape if this component type has an asset defined
+        const regEntry = (typeof COMPONENT_REGISTRY !== 'undefined') ? COMPONENT_REGISTRY[comp.typeKey] : null;
+        const compAsset = regEntry ? regEntry.asset : null;
+        if (compAsset) {
+          const shape = _getCompShape(compAsset);
+          if (shape.loaded) {
+            ctx.save();
+            ctx.beginPath();
+            ctx.rect(ox, oy, cw, ch);
+            ctx.clip();
+            shape.x     = ox + cw / 2;
+            shape.y     = oy + ch / 2;
+            shape.scale = (Math.min(cw, ch) * 0.4) / 7;
+            shape.render(ctx);
+            ctx.restore();
+          } else {
+            ctx.fillStyle    = '#dde';
+            ctx.textAlign    = 'center';
+            ctx.textBaseline = 'middle';
+            ctx.font         = `${Math.max(8, Math.min(11, cw / (comp.name.length * 0.6)))}px monospace`;
+            ctx.fillText(comp.name, ox + cw / 2, oy + ch / 2);
+          }
         } else {
-          // Fallback: component name text
-          ctx.fillStyle = '#dde';
-          ctx.textAlign = 'center';
+          // No asset: show name label
+          ctx.fillStyle    = '#dde';
+          ctx.textAlign    = 'center';
           ctx.textBaseline = 'middle';
-          const fontSize = Math.min(11, (cw / (comp.name.length * 0.6)));
-          ctx.font = `${Math.max(8, fontSize)}px monospace`;
+          ctx.font         = `${Math.max(8, Math.min(11, cw / (comp.name.length * 0.6)))}px monospace`;
           ctx.fillText(comp.name, ox + cw / 2, oy + ch / 2);
         }
       }

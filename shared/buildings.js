@@ -134,7 +134,27 @@
       hp: 400,
       cost: { iron: 20 },
     },
+
+
+
+    turret1: {
+      id: "turret1",
+      name: "Auto Turret",
+      description:
+        "Basic automated defense system. Scans for and shoots nearby threats.",
+      category: "defense",
+      gridW: 1,
+      gridH: 3,
+      asset: "gun1.json",
+      lineWidth: 2,
+      hp: 100,
+      cost: { iron: 60, carbon: 30 },
+      powerDraw: 20,
+    },
   };
+
+  // -- Turrets
+  
 
   const exports = { BUILDING_REGISTRY };
   if (typeof module !== "undefined") module.exports = exports;

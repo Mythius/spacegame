@@ -12,6 +12,8 @@
       name:  'Scout',
       desc:  'Small, fast, and agile. Limited HP but hard to catch.',
       color: '#4af',
+      asset: 'ship1.json',
+      scale: 5,
       gridW: 6, gridH: 6,
       layout: [
         { typeKey: 'core_basic',     x: 2, y: 2 },
@@ -28,6 +30,8 @@
       name:  'Fighter',
       desc:  'Balanced speed and firepower. The standard warship.',
       color: '#8f4',
+      asset: 'fighter.json',
+      scale: 6,
       gridW: 8, gridH: 8,
       layout: [
         { typeKey: 'core_basic',      x: 3, y: 3 },
@@ -47,6 +51,8 @@
       name:  'Cruiser',
       desc:  'Heavy armor and high firepower. Sluggish but powerful.',
       color: '#fa4',
+      asset: 'mothership.json',
+      scale: 8,
       gridW: 10, gridH: 10,
       layout: [
         { typeKey: 'core_advanced',    x: 4, y: 4 },
@@ -68,6 +74,8 @@
       name:  'Freighter',
       desc:  'Massive cargo capacity. Built for hauling, not combat.',
       color: '#b7a',
+      asset: 'mythius.json',
+      scale: 7,
       gridW: 10, gridH: 10,
       layout: [
         { typeKey: 'core_basic',    x: 4, y: 4 },

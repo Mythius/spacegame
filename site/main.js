@@ -75,6 +75,18 @@ socket.on('start_game', ({ gameId, playerId }) => {
 
 let selectedShipKey = 'scout';
 
+// Mini-grid component shape cache — rebuilds ship cards on first load of each asset
+const _miniShapeCache = new Map();
+function _getMiniShape(asset) {
+  if (!_miniShapeCache.has(asset)) {
+    const p = new PolarObject(`/assets/${asset}`);
+    p.lineWidth = 1;
+    p.onload = () => { p.show(); buildShipCards(); };
+    _miniShapeCache.set(asset, p);
+  }
+  return _miniShapeCache.get(asset);
+}
+
 // Color mapping for mini-grid rendering
 const _MINI_COLORS = [
 	['core',        '#f84'],
@@ -191,6 +203,23 @@ function renderMiniGrid(canvas, template) {
 		cx.strokeStyle = col;
 		cx.lineWidth   = 1;
 		cx.strokeRect(px + 0.5, py + 0.5, pw - 1, ph - 1);
+
+		const regEntry  = (typeof COMPONENT_REGISTRY !== 'undefined') ? COMPONENT_REGISTRY[entry.typeKey] : null;
+		const miniAsset = regEntry ? regEntry.asset : null;
+		if (miniAsset && CELL >= 10) {
+			const shape = _getMiniShape(miniAsset);
+			if (shape.loaded) {
+				cx.save();
+				cx.beginPath();
+				cx.rect(px, py, pw, ph);
+				cx.clip();
+				shape.x     = px + pw / 2;
+				shape.y     = py + ph / 2;
+				shape.scale = (Math.min(pw, ph) * 0.4) / 7;
+				shape.render(cx);
+				cx.restore();
+			}
+		}
 
 		for (let dy = 0; dy < def.gridH; dy++)
 			for (let dx = 0; dx < def.gridW; dx++)
