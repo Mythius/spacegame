@@ -229,6 +229,7 @@ function renderLoop(timestamp) {
     if (nearDeposit) drawMinePrompt(nearDeposit, ox, oy);
     drawBoundaryWarning(me);
     drawHUD(me);
+    drawRadar(me, W, H);
   }
 }
 
@@ -673,6 +674,87 @@ function drawHUD(ship) {
   ctx.fillStyle  = 'rgba(120,140,180,0.55)';
   ctx.font       = '10px monospace';
   ctx.fillText('W/S — thrust/brake   A/D — rotate   E — mine   B — build', W - 12, 22);
+
+  ctx.restore();
+}
+
+// ── Radar ─────────────────────────────────────────────────────────────────────
+
+function drawRadar(me, W, H) {
+  const R    = 70;   // radar circle radius
+  const CX   = W - R - 16;
+  const CY   = H - R - 16;
+  const RANGE = 4000; // world-unit radius the radar covers
+
+  ctx.save();
+
+  // Background disc
+  ctx.beginPath();
+  ctx.arc(CX, CY, R, 0, Math.PI * 2);
+  ctx.fillStyle = 'rgba(0,8,20,0.78)';
+  ctx.fill();
+  ctx.strokeStyle = '#1a3a5a';
+  ctx.lineWidth   = 1.5;
+  ctx.stroke();
+
+  // Sweep rings
+  ctx.strokeStyle = 'rgba(30,80,130,0.35)';
+  ctx.lineWidth   = 0.5;
+  for (const frac of [0.33, 0.67]) {
+    ctx.beginPath();
+    ctx.arc(CX, CY, R * frac, 0, Math.PI * 2);
+    ctx.stroke();
+  }
+
+  // Cross-hairs
+  ctx.strokeStyle = 'rgba(30,80,130,0.3)';
+  ctx.beginPath(); ctx.moveTo(CX - R, CY); ctx.lineTo(CX + R, CY); ctx.stroke();
+  ctx.beginPath(); ctx.moveTo(CX, CY - R); ctx.lineTo(CX, CY + R); ctx.stroke();
+
+  // Clip to radar circle for dots
+  ctx.beginPath();
+  ctx.arc(CX, CY, R - 1, 0, Math.PI * 2);
+  ctx.clip();
+
+  // Other ships
+  for (const [id, ship] of renderShips) {
+    if (id === myPlayerId) continue;
+    const dx = ship.x - me.x;
+    const dy = ship.y - me.y;
+    const dist = Math.sqrt(dx * dx + dy * dy);
+    if (dist > RANGE) continue;
+
+    const rx = CX + (dx / RANGE) * R;
+    const ry = CY + (dy / RANGE) * R;
+
+    // Brighter dot for ships outside the viewport
+    const halfW = canvas.width  / 2;
+    const halfH = canvas.height / 2;
+    const offScreen = Math.abs(dx) > halfW || Math.abs(dy) > halfH;
+
+    ctx.beginPath();
+    ctx.arc(rx, ry, offScreen ? 3.5 : 2, 0, Math.PI * 2);
+    ctx.fillStyle = offScreen ? '#f84' : '#fa8';
+    ctx.fill();
+  }
+
+  ctx.restore();
+
+  // Player dot (drawn after restore so it's not clipped away at center)
+  ctx.save();
+  ctx.beginPath();
+  ctx.arc(CX, CY, 3, 0, Math.PI * 2);
+  ctx.fillStyle = '#4af';
+  ctx.fill();
+
+  // Heading tick — direction=0 is right, π/2 is down, matching canvas axes
+  const dir = me.direction || 0;
+  ctx.strokeStyle = '#4af';
+  ctx.lineWidth   = 1.5;
+  ctx.beginPath();
+  ctx.moveTo(CX, CY);
+  ctx.lineTo(CX + Math.cos(dir) * 10, CY + Math.sin(dir) * 10);
+  ctx.stroke();
 
   ctx.restore();
 }
