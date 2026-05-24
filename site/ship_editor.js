@@ -16,6 +16,12 @@
     { prefix: 'tether',      color: '#a6f' },
     { prefix: 'fabricator',  color: '#f6a' },
     { prefix: 'drone',       color: '#4db' },
+    { prefix: 'conveyor',    color: '#8c6' },
+    { prefix: 'pipe',        color: '#69b' },
+    { prefix: 'liquid',      color: '#4bf' },
+    { prefix: 'process',     color: '#c74' },
+    { prefix: 'power',       color: '#fd4' },
+    { prefix: 'system',      color: '#b8f' },
   ];
 
   function typeColor(typeKey) {
@@ -74,6 +80,12 @@
       { label: 'Tethers',     prefix: 'tether' },
       { label: 'Fabricators', prefix: 'fabricator' },
       { label: 'Drones',      prefix: 'drone' },
+      { label: 'Conveyors',   prefix: 'conveyor' },
+      { label: 'Pipes',       prefix: 'pipe' },
+      { label: 'Liquids',     prefix: 'liquid' },
+      { label: 'Processing',  prefix: 'process' },
+      { label: 'Power',       prefix: 'power' },
+      { label: 'Systems',     prefix: 'system' },
     ];
 
     for (const cat of categories) {

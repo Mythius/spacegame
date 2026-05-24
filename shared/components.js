@@ -291,6 +291,65 @@
     }
   }
 
+  // ── Conveyor ──────────────────────────────────────────────────────────────
+  class ConveyorComponent extends ShipComponent {
+    constructor(config = {}) {
+      super({ powerDraw: 2, ...config });
+      this.conveyorSpeed = config.conveyorSpeed || 1;
+    }
+  }
+
+  // ── Pipe ──────────────────────────────────────────────────────────────────
+  class PipeComponent extends ShipComponent {
+    constructor(config = {}) {
+      super({ ...config });
+      this.flowRate = config.flowRate || 10;
+    }
+  }
+
+  // ── Liquid Tank ───────────────────────────────────────────────────────────
+  class LiquidTankComponent extends StorageComponent {
+    constructor(config = {}) {
+      super({ ...config });
+      this.liquidType = config.liquidType || null;
+    }
+  }
+
+  // ── Liquid Mixer ──────────────────────────────────────────────────────────
+  class LiquidMixerComponent extends ShipComponent {
+    constructor(config = {}) {
+      super({ powerDraw: 25, ...config });
+      this.processRate = config.processRate || 1;
+    }
+  }
+
+  // ── Processing (factory, forge, grinder, constructer) ─────────────────────
+  class ProcessingComponent extends ShipComponent {
+    constructor(config = {}) {
+      super({ powerDraw: 30, ...config });
+      this.processRate = config.processRate || 1;
+      this._progress   = 0;
+    }
+
+    update(dt) {
+      if (!this.alive || !this.active) return;
+      this._progress += dt * this.processRate;
+    }
+  }
+
+  // ── Solar Panel ───────────────────────────────────────────────────────────
+  class SolarPanelComponent extends ShipComponent {
+    constructor(config = {}) {
+      super({ exterior: true, ...config });
+      this.powerOutput = config.powerOutput || 30;
+      this.efficiency  = config.efficiency  || 1.0;
+    }
+
+    get currentPowerOutput() {
+      return this.alive && this.active ? this.powerOutput * this.efficiency : 0;
+    }
+  }
+
   // ─────────────────────────────────────────────────────────────────────────
   // COMPONENT REGISTRY
   // Adding a new component = one entry here. No other changes needed.
@@ -346,6 +405,43 @@
     // ── Drone Bays ─────────────────────────────────────────────────────────
     drone_bay_basic:  { cls: DroneBayComponent, asset: 'bay.json',      defaults: { name: 'Drone Bay',      hp: 80,  gridW: 2, gridH: 2, maxDrones: 2, spawnRate: 30 } },
     drone_bay_adv:    { cls: DroneBayComponent, asset: 'bay.json',      defaults: { name: 'Heavy Drone Bay',hp: 120, gridW: 3, gridH: 2, maxDrones: 5, spawnRate: 20 } },
+
+    // ── Additional Weapons ─────────────────────────────────────────────────
+    weapon_railgun:    { cls: WeaponComponent,   asset: 'gun5.json',          defaults: { name: 'Railgun',         hp: 90,  gridW: 1, gridH: 2, weaponType: 'railgun'        } },
+    weapon_missile_t:  { cls: WeaponComponent,   asset: 'gun6.json',          defaults: { name: 'Missile Turret',  hp: 80,  gridW: 2, gridH: 2, weaponType: 'missile_turret' } },
+
+    // ── Conveyors ──────────────────────────────────────────────────────────
+    conveyor_straight: { cls: ConveyorComponent, asset: 'conveyor.json',        defaults: { name: 'Conveyor',          hp: 40, gridW: 1, gridH: 1, powerDraw: 2 } },
+    conveyor_corner:   { cls: ConveyorComponent, asset: 'conveyorcorner.json',  defaults: { name: 'Conveyor Corner',   hp: 40, gridW: 1, gridH: 1, powerDraw: 2 } },
+    conveyor_corner_b: { cls: ConveyorComponent, asset: 'conveyorcorner2.json', defaults: { name: 'Conveyor Corner B', hp: 40, gridW: 1, gridH: 1, powerDraw: 2 } },
+    conveyor_cross:    { cls: ConveyorComponent, asset: 'conveyorcross.json',   defaults: { name: 'Conveyor Cross',    hp: 40, gridW: 1, gridH: 1, powerDraw: 2 } },
+    conveyor_cross_b:  { cls: ConveyorComponent, asset: 'conveyorcross2.json',  defaults: { name: 'Conveyor Cross B',  hp: 40, gridW: 1, gridH: 1, powerDraw: 2 } },
+    conveyor_tee:      { cls: ConveyorComponent, asset: 'conveyortee.json',     defaults: { name: 'Conveyor Tee',      hp: 40, gridW: 1, gridH: 1, powerDraw: 2 } },
+
+    // ── Pipes ──────────────────────────────────────────────────────────────
+    pipe_straight:     { cls: PipeComponent,     asset: 'pipe.json',         defaults: { name: 'Pipe',           hp: 30, gridW: 1, gridH: 1 } },
+    pipe_cross:        { cls: PipeComponent,     asset: 'pipecross.json',    defaults: { name: 'Pipe Cross',     hp: 30, gridW: 1, gridH: 1 } },
+    pipe_tee:          { cls: PipeComponent,     asset: 'pipetee.json',      defaults: { name: 'Pipe Tee',       hp: 30, gridW: 1, gridH: 1 } },
+    pipe_diagonal:     { cls: PipeComponent,     asset: 'diagonalpipe.json', defaults: { name: 'Pipe Diagonal',  hp: 30, gridW: 1, gridH: 1 } },
+
+    // ── Liquid Processing ──────────────────────────────────────────────────
+    liquid_tank:       { cls: LiquidTankComponent,  asset: 'liquidtank.json',  defaults: { name: 'Liquid Tank',  hp: 80,  gridW: 1, gridH: 2, capacity: 500 } },
+    liquid_mixer:      { cls: LiquidMixerComponent, asset: 'liquidmixer.json', defaults: { name: 'Liquid Mixer', hp: 100, gridW: 2, gridH: 2, powerDraw: 25 } },
+
+    // ── Processing ─────────────────────────────────────────────────────────
+    process_factory:     { cls: ProcessingComponent, asset: 'factory.json',     defaults: { name: 'Factory',      hp: 150, gridW: 2, gridH: 2, powerDraw: 40 } },
+    process_forge:       { cls: ProcessingComponent, asset: 'forge.json',       defaults: { name: 'Forge',        hp: 120, gridW: 2, gridH: 2, powerDraw: 35 } },
+    process_grinder:     { cls: ProcessingComponent, asset: 'grinder.json',     defaults: { name: 'Grinder',      hp: 100, gridW: 1, gridH: 2, powerDraw: 25 } },
+    process_constructer: { cls: ProcessingComponent, asset: 'constructer.json', defaults: { name: 'Constructor',  hp: 120, gridW: 2, gridH: 2, powerDraw: 30 } },
+
+    // ── Power ──────────────────────────────────────────────────────────────
+    power_solar:   { cls: SolarPanelComponent, asset: 'solarpanel.json',   defaults: { name: 'Solar Panel',    hp: 60, gridW: 2, gridH: 1, powerOutput: 30, exterior: true } },
+    power_coupler: { cls: ShipComponent,       asset: 'powercoupler.json', defaults: { name: 'Power Coupler',  hp: 60, gridW: 1, gridH: 1 } },
+
+    // ── Systems ────────────────────────────────────────────────────────────
+    system_router: { cls: ShipComponent, asset: 'router.json', defaults: { name: 'Router', hp: 50, gridW: 1, gridH: 1, powerDraw: 5 } },
+    system_node:   { cls: ShipComponent, asset: 'node.json',   defaults: { name: 'Node',   hp: 50, gridW: 1, gridH: 1, powerDraw: 3 } },
+    system_radar:  { cls: ShipComponent, asset: 'radar.json',  defaults: { name: 'Radar',  hp: 60, gridW: 1, gridH: 1, powerDraw: 8 } },
   };
 
   function createComponent(typeKey, overrides = {}) {
@@ -495,6 +591,8 @@
     ShipComponent, CoreComponent, ThrusterComponent, ArmorComponent,
     ShieldGenComponent, StorageComponent, FabricatorComponent,
     DrillComponent, TetherComponent, ClawComponent, WeaponComponent, DroneBayComponent,
+    ConveyorComponent, PipeComponent, LiquidTankComponent, LiquidMixerComponent,
+    ProcessingComponent, SolarPanelComponent,
     COMPONENT_REGISTRY, createComponent, ShipGrid,
   };
   if (typeof module !== 'undefined') module.exports = exports;

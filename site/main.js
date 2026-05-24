@@ -99,6 +99,12 @@ const _MINI_COLORS = [
 	['tether',      '#a6f'],
 	['fabricator',  '#f6a'],
 	['drone',       '#4db'],
+	['conveyor',    '#8c6'],
+	['pipe',        '#69b'],
+	['liquid',      '#4bf'],
+	['process',     '#c74'],
+	['power',       '#fd4'],
+	['system',      '#b8f'],
 ];
 
 function _compColor(typeKey) {
