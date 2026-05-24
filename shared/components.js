@@ -20,6 +20,7 @@
       this.powerDraw    = config.powerDraw   || 0;   // watts consumed
       this.powerOutput  = config.powerOutput || 0;   // watts produced
       this.massContrib  = config.massContrib || (this.gridW * this.gridH);
+      this.rotation     = config.rotation     || 0;    // degrees: 0/90/180/270
       this.active       = true;    // toggled off when power is cut
     }
 
@@ -63,7 +64,7 @@
     update(_dt, _powerAvailable) {}
 
     serialize() {
-      return { typeKey: this.typeKey, hp: Math.round(this.hp), active: this.active };
+      return { typeKey: this.typeKey, hp: Math.round(this.hp), active: this.active, rotation: this.rotation || 0 };
     }
   }
 

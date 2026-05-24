@@ -49,8 +49,9 @@
   }
 
   // ── State ──────────────────────────────────────────────────────
-  let grid        = new ShipGrid(cols, rows);
-  let selectedKey = null;
+  let grid              = new ShipGrid(cols, rows);
+  let selectedKey       = null;
+  let placementRotation = 0;   // 0 | 90 | 180 | 270
   let hoverX = -1, hoverY = -1;
   let painting = false;
 
@@ -207,7 +208,7 @@
         ctx.strokeRect(ox + 0.75, oy + 0.75, cw - 1.5, ch - 1.5);
 
         // Render polar shape if this component type has an asset defined
-        const regEntry = (typeof COMPONENT_REGISTRY !== 'undefined') ? COMPONENT_REGISTRY[comp.typeKey] : null;
+        const regEntry  = COMPONENT_REGISTRY[comp.typeKey];
         const compAsset = regEntry ? regEntry.asset : null;
         if (compAsset) {
           const shape = _getCompShape(compAsset);
@@ -216,21 +217,23 @@
             ctx.beginPath();
             ctx.rect(ox, oy, cw, ch);
             ctx.clip();
-            shape.x     = ox + cw / 2;
-            shape.y     = oy + ch / 2;
-            shape.scale = (Math.min(cw, ch) * 0.4) / 7;
+            shape.x             = ox + cw / 2;
+            shape.y             = oy + ch / 2;
+            shape.scale         = (Math.min(cw, ch) * 0.4) / 7;
+            shape.direction     = comp.rotation || 0;
+            shape.colorOverride = col;   // use category color so white assets don't flash
             shape.render(ctx);
+            shape.colorOverride = null;
             ctx.restore();
           } else {
-            ctx.fillStyle    = '#dde';
+            ctx.fillStyle    = col;
             ctx.textAlign    = 'center';
             ctx.textBaseline = 'middle';
             ctx.font         = `${Math.max(8, Math.min(11, cw / (comp.name.length * 0.6)))}px monospace`;
             ctx.fillText(comp.name, ox + cw / 2, oy + ch / 2);
           }
         } else {
-          // No asset: show name label
-          ctx.fillStyle    = '#dde';
+          ctx.fillStyle    = col;
           ctx.textAlign    = 'center';
           ctx.textBaseline = 'middle';
           ctx.font         = `${Math.max(8, Math.min(11, cw / (comp.name.length * 0.6)))}px monospace`;
@@ -239,21 +242,44 @@
       }
     }
 
-    // Hover preview
+    // Hover preview — respects current placementRotation
     if (selectedKey && hoverX >= 0 && hoverY >= 0) {
-      const def = COMPONENT_REGISTRY[selectedKey].defaults;
-      const tmp = createComponent(selectedKey);
-      const canPlace = grid._fits(tmp, hoverX, hoverY);
+      const def    = COMPONENT_REGISTRY[selectedKey].defaults;
+      const rotate = placementRotation === 90 || placementRotation === 270;
+      const gw     = rotate ? def.gridH : def.gridW;
+      const gh     = rotate ? def.gridW : def.gridH;
+      const canPlace = grid._fits({ gridW: gw, gridH: gh }, hoverX, hoverY);
       const px = hoverX * CELL + 2;
       const py = hoverY * CELL + 2;
-      const pw = def.gridW * CELL - 4;
-      const ph = def.gridH * CELL - 4;
+      const pw = gw * CELL - 4;
+      const ph = gh * CELL - 4;
 
       ctx.fillStyle = canPlace ? 'rgba(0,200,100,0.22)' : 'rgba(255,60,60,0.22)';
       ctx.fillRect(px, py, pw, ph);
       ctx.strokeStyle = canPlace ? '#0c7' : '#f33';
       ctx.lineWidth = 2;
       ctx.strokeRect(px + 1, py + 1, pw - 2, ph - 2);
+
+      const hoverAsset = COMPONENT_REGISTRY[selectedKey].asset;
+      if (hoverAsset) {
+        const hoverShape = _getCompShape(hoverAsset);
+        if (hoverShape.loaded) {
+          const hcol = typeColor(selectedKey);
+          ctx.save();
+          ctx.globalAlpha = 0.55;
+          ctx.beginPath();
+          ctx.rect(px, py, pw, ph);
+          ctx.clip();
+          hoverShape.x             = px + pw / 2;
+          hoverShape.y             = py + ph / 2;
+          hoverShape.scale         = (Math.min(pw, ph) * 0.4) / 7;
+          hoverShape.direction     = placementRotation;
+          hoverShape.colorOverride = hcol;
+          hoverShape.render(ctx);
+          hoverShape.colorOverride = null;
+          ctx.restore();
+        }
+      }
     }
   }
 
@@ -328,7 +354,7 @@
       <div class="sel-name" style="color:${col}">${def.name}</div>
       <div class="sel-key">${selectedKey}</div>
       <table class="sel-table">${tableRows}</table>
-      <div class="sel-hint">Left-click — place<br>Right-click — remove</div>
+      <div class="sel-hint">Left-click — place<br>Right-click — remove<br>R — rotate (${placementRotation}°)</div>
     `;
   }
 
@@ -361,9 +387,21 @@
   canvas.addEventListener('mouseup',    () => { painting = false; });
   canvas.addEventListener('mouseleave', () => { hoverX = -1; hoverY = -1; painting = false; draw(); });
 
+  document.addEventListener('keydown', e => {
+    if (e.target.tagName === 'INPUT') return;
+    if (e.key === 'r' || e.key === 'R') {
+      placementRotation = (placementRotation + 90) % 360;
+      updateSelectedInfo();
+      draw();
+    }
+  });
+
   function tryPlace(gx, gy) {
     if (!selectedKey) return;
-    const comp = createComponent(selectedKey);
+    const comp = createComponent(selectedKey, { rotation: placementRotation });
+    if (placementRotation === 90 || placementRotation === 270) {
+      [comp.gridW, comp.gridH] = [comp.gridH, comp.gridW];
+    }
     if (grid.place(comp, gx, gy)) {
       updateStats();
       draw();
